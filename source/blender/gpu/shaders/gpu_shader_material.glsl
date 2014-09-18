@@ -2463,9 +2463,47 @@ void node_object_info(out vec3 location, out float object_index, out float mater
 	random = 0.0;
 }
 
-void node_normal_map(float strength, vec4 color, vec3 N, out vec3 result)
+void node_normal_map_tangent(float strength, vec4 color, vec3 N, vec4 T, mat4 viewmat, mat4 obmat, mat4 viewinvmat, mat4 obinvmat, out vec3 result)
 {
-	result = N;
+	color = ( color - vec4(0.5))*vec4(2.0);
+	N = normalize((obinvmat*(viewinvmat*vec4(N, 0.0))).xyz);
+	T = vec4( normalize((obinvmat*(viewinvmat*vec4(T.xyz, 0.0))).xyz), T.w);
+	vec3 B = T.w * cross(N, T.xyz);
+	vec3 No = color.x*T.xyz + color.y*B + color.z*N;
+	result = normalize(N + (No - N) * max(strength, 0.0));
+	result = normalize((obmat*vec4(result,0.0)).xyz);
+}
+
+void node_normal_map_object(float strength, vec4 color, vec3 N, vec4 T, mat4 viewmat, mat4 obmat, mat4 viewinvmat, mat4 obinvmat, out vec3 result)
+{
+	color = ( color - vec4(0.5))*vec4(2.0);
+	vec3 No = color.xyz * vec3(1.0, -1.0, 1.0);
+	result = normalize(N + (No - N) * max(strength, 0.0));
+	result = normalize((obmat*vec4(result,0.0)).xyz);
+}
+
+void node_normal_map_world(float strength, vec4 color, vec3 N, vec4 T, mat4 viewmat, mat4 obmat, mat4 viewinvmat, mat4 obinvmat, out vec3 result)
+{
+	color = ( color - vec4(0.5))*vec4(2.0);
+	vec3 No = color.xyz * vec3(1.0, -1.0, 1.0);
+	result = normalize(N + (No - N) * max(strength, 0.0));
+	result = normalize(result);
+}
+
+void node_normal_map_blend_object(float strength, vec4 color, vec3 N, vec4 T, mat4 viewmat, mat4 obmat, mat4 viewinvmat, mat4 obinvmat, out vec3 result)
+{
+	color = ( color - vec4(0.5))*vec4(2.0);
+	vec3 No = color.xzy * vec3(1.0, -1.0, 1.0);
+	result = normalize(N + (No - N) * max(strength, 0.0));
+	result = normalize((obmat*vec4(result,0.0)).xyz);
+}
+
+void node_normal_map_blend_world(float strength, vec4 color, vec3 N, vec4 T, mat4 viewmat, mat4 obmat, mat4 viewinvmat, mat4 obinvmat, out vec3 result)
+{
+	color = ( color - vec4(0.5))*vec4(2.0);
+	vec3 No = color.xzy * vec3(1.0, -1.0, 1.0);
+	result = normalize(N + (No - N) * max(strength, 0.0));
+	result = normalize(result);
 }
 
 void node_bump(float strength, float dist, float height, vec3 N, out vec3 result)

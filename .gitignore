@@ -11,6 +11,10 @@ __pycache__/
 *.swo
 *#
 
+# Sublime text
+*.sublime-project
+*.sublime-workspace
+
 # QtCreator
 CMakeLists.txt.user
 
