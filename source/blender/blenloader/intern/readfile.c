@@ -2382,6 +2382,11 @@ static void lib_link_ntree(FileData *fd, ID *id, bNodeTree *ntree)
 		
 		node->id= newlibadr_us(fd, id->lib, node->id);
 
+		if (node->storage && node->type == SH_NODE_PBR_SHADER){
+			NodePbrShader *pbr = node->storage;
+			pbr->idMat = newlibadr_us(fd, id->lib, pbr->idMat);
+		}
+
 		for (sock = node->inputs.first; sock; sock = sock->next)
 			lib_link_node_socket(fd, id, sock);
 		for (sock = node->outputs.first; sock; sock = sock->next)
@@ -3314,6 +3319,7 @@ static void direct_link_image(FileData *fd, Image *ima)
 		ima->tpageflag &= ~IMA_GLBIND_IS_DATA;
 		ima->gputexture = NULL;
 		ima->rr = NULL;
+		ima->pbr_envmap = NULL;
 	}
 	
 	ima->anim = NULL;
@@ -3470,6 +3476,8 @@ static void direct_link_texture(FileData *fd, Tex *tex)
 	tex->env = newdataadr(fd, tex->env);
 	if (tex->env) {
 		tex->env->ima = NULL;
+		tex->env->gputexture = NULL;
+		tex->env->bindcode = 0;
 		memset(tex->env->cube, 0, 6 * sizeof(void *));
 		tex->env->ok= 0;
 	}
@@ -8102,6 +8110,10 @@ static void expand_nodetree(FileData *fd, Main *mainvar, bNodeTree *ntree)
 	for (node = ntree->nodes.first; node; node = node->next) {
 		if (node->id && node->type != CMP_NODE_R_LAYERS)
 			expand_doit(fd, mainvar, node->id);
+		if (node->storage && node->type == SH_NODE_PBR_SHADER){
+			NodePbrShader *pbr = node->storage;
+			expand_doit(fd, mainvar, pbr->idMat);
+		}
 	}
 
 }

@@ -28,12 +28,16 @@
 
 #include "DNA_image_types.h"
 #include "DNA_scene_types.h"
+#include "DNA_node_types.h"
 
 #include "BLI_utildefines.h"
 
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
 #include "BKE_image.h"
+#include "BKE_node.h"
+
+#include "ED_node.h"
 
 #include "RNA_define.h"
 #include "RNA_enum_types.h"
@@ -135,6 +139,16 @@ static void rna_Image_colormanage_update(Main *UNUSED(bmain), Scene *UNUSED(scen
 	DAG_id_tag_update(&ima->id, 0);
 	WM_main_add_notifier(NC_IMAGE | ND_DISPLAY, &ima->id);
 	WM_main_add_notifier(NC_IMAGE | NA_EDITED, &ima->id);
+}
+
+static void rna_Image_pbr_update(Main *bmain, Scene *UNUSED(scene), PointerRNA *ptr)
+{
+	Image *ima = ptr->id.data;
+
+	/* Update all Nodetrees */
+	FOREACH_NODETREE(bmain, tntree, id) {
+		ED_node_tag_update_id(id);
+	} FOREACH_NODETREE_END
 }
 
 static void rna_ImageUser_update(Main *UNUSED(bmain), Scene *scene, PointerRNA *ptr)
@@ -495,6 +509,25 @@ static void rna_def_image(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
+	/* PBR */
+	static const EnumPropertyItem prop_projection_items[] = {
+		{SHD_PROJ_EQUIRECTANGULAR, "EQUIRECTANGULAR", 0, "Equirectangular",
+		                           "Equirectangular or latitude-longitude projection"},
+		{SHD_PROJ_CUBEMAP, "CUBEMAP", 0, "Cubemap",
+		                       "Cubemap projection"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
+	static const EnumPropertyItem prop_sample_items[] = {
+		{SHD_PBR_SAMPLE_32, "32_SAMPLES", 0, "32 Samples",
+		                    "Environement Texture will be importance sampled 32 times with lod."},
+		{SHD_PBR_SAMPLE_64, "64_SAMPLES", 0, "64 Samples",
+		                    "Environement Texture will be importance sampled 64 times with lod."},
+		{SHD_PBR_SAMPLE_PRECALC, "PRECALC", 0, "Pre-filtered",
+		                    "Environement Texture will be prefiltered and sampled 1 time."},
+		{0, NULL, 0, NULL, NULL}
+	};
+
 	srna = RNA_def_struct(brna, "Image", "ID");
 	RNA_def_struct_ui_text(srna, "Image", "Image datablock referencing an external or packed image");
 	RNA_def_struct_ui_icon(srna, ICON_IMAGE_DATA);
@@ -724,6 +757,17 @@ static void rna_def_image(BlenderRNA *brna)
 	RNA_def_property_enum_items(prop, alpha_mode_items);
 	RNA_def_property_ui_text(prop, "Alpha Mode", "Representation of alpha information in the RGBA pixels");
 	RNA_def_property_update(prop, NC_IMAGE | ND_DISPLAY, "rna_Image_colormanage_update");
+
+	/* Pbr */
+	prop = RNA_def_property(srna, "envmap_sampling", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, prop_sample_items);
+	RNA_def_property_ui_text(prop, "Sampling", "");
+	RNA_def_property_update(prop, NC_IMAGE | ND_DISPLAY, "rna_Image_pbr_update");
+
+	prop = RNA_def_property(srna, "pbr_projection", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, prop_projection_items);
+	RNA_def_property_ui_text(prop, "Projection", "Projection of the input image");
+	RNA_def_property_update(prop, 0, "rna_Image_pbr_update");
 
 	RNA_api_image(srna);
 }

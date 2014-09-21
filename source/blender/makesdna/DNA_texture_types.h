@@ -51,6 +51,7 @@ struct Tex;
 struct Image;
 struct PreviewImage;
 struct ImBuf;
+struct GPUTexture;
 struct Ocean;
 struct CurveMapping;
 
@@ -123,12 +124,18 @@ typedef struct EnvMap {
 	struct Object *object;
 	struct Image *ima;		/* type ENV_LOAD */
 	struct ImBuf *cube[6];		/* these images are dynamic, not part of the main struct */
+	struct ImBuf *gpucube[6];		/* these images are dynamic, not part of the main struct (Are here to not interfere with main renderer) */
+	struct GPUTexture *gputexture;	/* not written in file */
 	float imat[4][4];
 	float obimat[3][3];
 	short type, stype;
 	float clipsta, clipend;
 	float viewscale;	/* viewscale is for planar envmaps to zoom in or out */
 	unsigned int notlay;
+	unsigned int bindcode;	/* only for current image... */
+	int gpuok;
+	int gpu_use_mips;
+	int pad;
 	short cuberes, depth;
 	int ok, lastframe;
 	short recalc, lastsize;

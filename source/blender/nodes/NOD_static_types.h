@@ -125,6 +125,8 @@ DefNode( ShaderNode,     SH_NODE_UVALONGSTROKE,      def_sh_uvalongstroke,   "UV
 DefNode( ShaderNode,     SH_NODE_SEPXYZ,             0,                      "SEPXYZ",             SeparateXYZ,      "Separate XYZ",      ""       )
 DefNode( ShaderNode,     SH_NODE_COMBXYZ,            0,                      "COMBXYZ",            CombineXYZ,       "Combine XYZ",       ""       )
 
+DefNode( ShaderNode,     SH_NODE_PBR_SHADER,         def_sh_pbr_shader,      "PBR_SHADER",         PbrShader,        "Pbr Shader",        ""       )
+
 DefNode( CompositorNode, CMP_NODE_VIEWER,         def_cmp_viewer,         "VIEWER",         Viewer,           "Viewer",            ""              )
 DefNode( CompositorNode, CMP_NODE_RGB,            0,                      "RGB",            RGB,              "RGB",               ""              )
 DefNode( CompositorNode, CMP_NODE_VALUE,          0,                      "VALUE",          Value,            "Value",             ""              )

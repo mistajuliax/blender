@@ -518,6 +518,7 @@ extern StructRNA RNA_ShaderNodeValToRGB;
 extern StructRNA RNA_ShaderNodeValue;
 extern StructRNA RNA_ShaderNodeVectorCurve;
 extern StructRNA RNA_ShaderNodeVectorMath;
+extern StructRNA RNA_ShaderNodePbrShader;
 extern StructRNA RNA_ShapeKey;
 extern StructRNA RNA_ShapeKeyBezierPoint;
 extern StructRNA RNA_ShapeKeyCurvePoint;

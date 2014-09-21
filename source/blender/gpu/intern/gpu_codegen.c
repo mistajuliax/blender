@@ -70,6 +70,7 @@ static const char *GPU_DATATYPE_STR[17] = {"", "float", "vec2", "vec3", "vec4",
 
 #define LINK_IMAGE_BLENDER	1
 #define LINK_IMAGE_PREVIEW	2
+#define LINK_IMAGE_ENVMAP	3
 
 /* GLSL code parsing for finding function definitions.
  * These are stored in a hash for lookup when creating a material. */
@@ -159,6 +160,8 @@ static void gpu_parse_functions_string(GHash *hash, char *code)
 				type= GPU_SHADOW2D;
 			if (!type && gpu_str_prefix(code, "sampler2D"))
 				type= GPU_TEX2D;
+			if (!type && gpu_str_prefix(code, "samplerCube"))
+				type= GPU_TEXCUBE;
 
 			if (type) {
 				/* add paramater */
@@ -340,7 +343,7 @@ static int codegen_input_has_texture(GPUInput *input)
 {
 	if (input->link)
 		return 0;
-	else if (input->ima || input->prv)
+	else if (input->ima || input->prv || input->envmap)
 		return 1;
 	else
 		return input->tex != NULL;
@@ -400,6 +403,17 @@ static void codegen_set_unique_ids(ListBase *nodes)
 					}
 					else
 						input->texid = GET_INT_FROM_POINTER(BLI_ghash_lookup(bindhash, input->link));
+				}
+				else if (input->envmap) {
+					/* input is texture from envmap, assign only one texid per
+					 * buffer to avoid sampling the same texture twice */
+					if (!BLI_ghash_haskey(bindhash, input->envmap)) {
+						input->texid = texid++;
+						input->bindtex = 1;
+						BLI_ghash_insert(bindhash, input->envmap, SET_INT_IN_POINTER(input->texid));
+					}
+					else
+						input->texid = GET_INT_FROM_POINTER(BLI_ghash_lookup(bindhash, input->envmap));
 				}
 				else if (input->ima) {
 					/* input is texture from image, assign only one texid per
@@ -473,10 +487,12 @@ static int codegen_print_uniforms_functions(DynStr *ds, ListBase *nodes)
 		for (input=node->inputs.first; input; input=input->next) {
 			if ((input->source == GPU_SOURCE_TEX) || (input->source == GPU_SOURCE_TEX_PIXEL)) {
 				/* create exactly one sampler for each texture */
-				if (codegen_input_has_texture(input) && input->bindtex)
+				if (codegen_input_has_texture(input) && input->bindtex) {
 					BLI_dynstr_appendf(ds, "uniform %s samp%d;\n",
-						(input->textype == GPU_TEX2D) ? "sampler2D" : "sampler2DShadow",
+						(input->textype == GPU_TEX2D) ? "sampler2D" : 
+						(input->textype == GPU_TEXCUBE) ? "samplerCube" : "sampler2DShadow",
 						input->texid);
+				}
 			}
 			else if (input->source == GPU_SOURCE_BUILTIN) {
 				/* only define each builting uniform/varying once */
@@ -636,6 +652,7 @@ static char *code_generate_fragment(ListBase *nodes, GPUOutput *output, const ch
 	BLI_dynstr_free(ds);
 
 	//if (G.debug & G_DEBUG) printf("%s\n", code);
+	//printf("%s\n", code);
 
 	return code;
 }
@@ -755,7 +772,7 @@ static void GPU_nodes_extract_dynamic_inputs(GPUPass *pass, ListBase *nodes)
 				continue;
 			}
 
-			if (input->ima || input->tex || input->prv)
+			if (input->ima || input->tex || input->prv || input->envmap)
 				BLI_snprintf(input->shadername, sizeof(input->shadername), "samp%d", input->texid);
 			else
 				BLI_snprintf(input->shadername, sizeof(input->shadername), "unf%d", input->id);
@@ -763,7 +780,7 @@ static void GPU_nodes_extract_dynamic_inputs(GPUPass *pass, ListBase *nodes)
 			/* pass non-dynamic uniforms to opengl */
 			extract = 0;
 
-			if (input->ima || input->tex || input->prv) {
+			if (input->ima || input->tex || input->prv || input->envmap) {
 				if (input->bindtex)
 					extract = 1;
 			}
@@ -801,6 +818,8 @@ void GPU_pass_bind(GPUPass *pass, double time, int mipmap)
 			input->tex = GPU_texture_from_blender(input->ima, input->iuser, input->image_isdata, time, mipmap);
 		else if (input->prv)
 			input->tex = GPU_texture_from_preview(input->prv, mipmap);
+		else if (input->envmap)
+			input->tex = GPU_texture_from_envmap(input->envmap, input->iuser, input->image_isdata, time, mipmap);
 
 		if (input->tex && input->bindtex) {
 			GPU_texture_bind(input->tex, input->texid);
@@ -963,15 +982,25 @@ static void gpu_node_input_link(GPUNode *node, GPUNodeLink *link, int type)
 		input->type = GPU_VEC4;
 		input->source = GPU_SOURCE_TEX;
 
-		if (link->image == LINK_IMAGE_PREVIEW)
-			input->prv = link->ptr1;
-		else {
-			input->ima = link->ptr1;
+		if (link->image == LINK_IMAGE_ENVMAP) {
+			input->envmap = link->ptr1;
 			input->iuser = link->ptr2;
 			input->image_isdata = link->image_isdata;
+			input->textarget = GL_TEXTURE_CUBE_MAP;
+			input->textype = GPU_TEXCUBE;
 		}
-		input->textarget = GL_TEXTURE_2D;
-		input->textype = GPU_TEX2D;
+		else {
+			if (link->image == LINK_IMAGE_PREVIEW)
+				input->prv = link->ptr1;
+			else {
+				input->ima = link->ptr1;
+				input->iuser = link->ptr2;
+				input->image_isdata = link->image_isdata;
+			}
+			input->textarget = GL_TEXTURE_2D;
+			input->textype = GPU_TEX2D;
+		}
+
 		MEM_freeN(link);
 	}
 	else if (link->attribtype) {
@@ -1040,7 +1069,7 @@ static void GPU_inputs_free(ListBase *inputs)
 	for (input=inputs->first; input; input=input->next) {
 		if (input->link)
 			GPU_node_link_free(input->link);
-		else if (input->tex && !input->dynamictex)
+		else if (input->tex && !input->dynamictex && !input->envmap)
 			GPU_texture_free(input->tex);
 	}
 
@@ -1179,12 +1208,23 @@ GPUNodeLink *GPU_image_preview(PreviewImage *prv)
 {
 	GPUNodeLink *link = GPU_node_link_create(0);
 	
-	link->image= LINK_IMAGE_PREVIEW;
-	link->ptr1= prv;
+	link->image = LINK_IMAGE_PREVIEW;
+	link->ptr1 = prv;
 	
 	return link;
 }
 
+GPUNodeLink *GPU_envmap(EnvMap *envmap, ImageUser *iuser, bool is_data)
+{
+	GPUNodeLink *link = GPU_node_link_create(0);
+
+	link->image = LINK_IMAGE_ENVMAP;
+	link->ptr1 = envmap;
+	link->ptr2 = iuser;
+	link->image_isdata = is_data;
+
+	return link;
+}
 
 GPUNodeLink *GPU_texture(int size, float *pixels)
 {

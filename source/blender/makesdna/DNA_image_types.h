@@ -118,6 +118,18 @@ typedef struct Image {
 	char alpha_mode;
 
 	char pad[7];
+
+	/* -------- PBR -------- */
+
+	/* Spherical Harmonics */
+	float SH_Coefs[9][3];
+	short envmap_ok;
+	short envmap_sampling;
+
+	/* PBR EnvCube */
+	struct EnvMap *pbr_envmap;
+	int pbr_projection;
+	int pbr_last_projection;
 } Image;
 
 

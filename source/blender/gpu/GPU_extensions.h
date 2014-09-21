@@ -116,6 +116,7 @@ GPUTexture *GPU_texture_create_depth(int w, int h, char err_out[256]);
 GPUTexture *GPU_texture_create_vsm_shadow_map(int size, char err_out[256]);
 GPUTexture *GPU_texture_from_blender(struct Image *ima,
 	struct ImageUser *iuser, bool is_data, double time, int mipmap);
+GPUTexture *GPU_texture_from_envmap(struct EnvMap *env, struct ImageUser *iuser, bool is_data, double time, int mipmap);
 GPUTexture *GPU_texture_from_preview(struct PreviewImage *prv, int mipmap);
 void GPU_invalid_tex_init(void);
 void GPU_invalid_tex_bind(int mode);

@@ -208,6 +208,12 @@ set(SRC
 	shader/node_shader_tree.c
 	shader/node_shader_util.c
 
+	shader/nodes/node_shader_pbr_shader.c
+	shader/pbr_prefiltering.c
+	shader/pbr_prefiltering.h
+	shader/pbr_spherical_harmonics.c
+	shader/pbr_spherical_harmonics.h
+
 	texture/nodes/node_texture_at.c
 	texture/nodes/node_texture_bricks.c
 	texture/nodes/node_texture_checker.c

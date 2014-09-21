@@ -125,6 +125,25 @@ void linearrgb_to_srgb(vec4 col_from, out vec4 col_to)
 	col_to.a = col_from.a;
 }
 
+void srgb_to_linearrgb(vec3 col_from, out vec3 col_to)
+{
+	col_to.r = srgb_to_linearrgb(col_from.r);
+	col_to.g = srgb_to_linearrgb(col_from.g);
+	col_to.b = srgb_to_linearrgb(col_from.b);
+}
+
+void linearrgb_to_srgb(vec3 col_from, out vec3 col_to)
+{
+	col_to.r = linearrgb_to_srgb(col_from.r);
+	col_to.g = linearrgb_to_srgb(col_from.g);
+	col_to.b = linearrgb_to_srgb(col_from.b);
+}
+
+void rgba_clamp(vec4 inCol, out vec4 outCol)
+{
+	outCol = clamp(inCol, 0.0, 1.0);
+}
+
 #define M_PI 3.14159265358979323846
 #define M_1_PI 0.31830988618379069
 
@@ -822,6 +841,18 @@ void texture_image(vec3 vec, sampler2D ima, out float value, out vec4 color, out
 	normal.z = 2.0*(color.b - 0.5);
 }
 
+void texture_envmap(vec3 vec, samplerCube ima, out float value, out vec4 color, out vec3 normal)
+{
+	//vec = vec3((vec.xy + vec2(1.0, 1.0))*0.5,vec.z);
+	color = textureCube(ima, vec);
+	value = color.a;
+
+	normal.x = 2.0*(color.r - 0.5);
+	normal.y = 2.0*(0.5 - color.g);
+	normal.z = 2.0*(color.b - 0.5);
+}
+
+
 /************* MTEX *****************/
 
 void texco_orco(vec3 attorco, out vec3 orco)
@@ -1222,6 +1253,13 @@ vec3 mtex_2d_mapping(vec3 vec)
 void mtex_image(vec3 texco, sampler2D ima, out float value, out vec4 color)
 {
 	color = texture2D(ima, texco.xy);
+	value = 1.0;
+}
+
+void mtex_cubemap(vec3 texco, samplerCube cube, out float value, out vec4 color)
+{
+	texco = vec3(texco.xy*2.0 + vec2(-1.0, -1.0), -texco.z);
+	color = textureCube(cube, texco);
 	value = 1.0;
 }
 
@@ -2346,8 +2384,19 @@ void node_tex_gradient(vec3 co, out vec4 color, out float fac)
 
 void node_tex_checker(vec3 co, vec4 color1, vec4 color2, float scale, out vec4 color, out float fac)
 {
-	color = vec4(1.0);
-	fac = 1.0;
+	co *= scale;
+
+	float xi = abs(floor(co.x));
+	float yi = abs(floor(co.y));
+	float zi = abs(floor(co.z));
+	if ( (mod(xi, 2.0) == mod(yi, 2.0)) == bool(mod(zi, 2.0)) ){
+		color = color1;
+		fac = 1.0;
+	}
+	else {
+		color = color2;
+		fac = 0.0;
+	}
 }
 
 void node_tex_brick(vec3 co, vec4 color1, vec4 color2, vec4 mortar, float scale, float mortar_size, float bias, float brick_width, float row_height, out vec4 color, out float fac)
@@ -2463,6 +2512,27 @@ void node_object_info(out vec3 location, out float object_index, out float mater
 	random = 0.0;
 }
 
+void node_vector_transform(vec3 Vector, float fromSpace, float toSpace, mat4 viewmat, mat4 obmat, mat4 viewinvmat, mat4 obinvmat, out vec3 result)
+{
+	if(fromSpace == 1.0){
+		//Object
+		result = ( obinvmat * vec4(Vector,0.0) ).xyz;
+	}else if(fromSpace == 2.0){
+		//Camera
+		result = ( viewinvmat * vec4(Vector,0.0) ).xyz;
+	}
+
+	if(toSpace == 1.0){
+		//Object
+		result = ( obmat * vec4(Vector,0.0) ).xyz;
+	}else if(toSpace == 2.0){
+		//Camera
+		result = ( viewmat * vec4(Vector,0.0) ).xyz;
+	}
+
+}
+
+
 void node_normal_map_tangent(float strength, vec4 color, vec3 N, vec4 T, mat4 viewmat, mat4 obmat, mat4 viewinvmat, mat4 obinvmat, out vec3 result)
 {
 	color = ( color - vec4(0.5))*vec4(2.0);
@@ -2538,4 +2608,396 @@ void material_preview_matcap(vec4 color, sampler2D ima, vec4 N, vec4 mask, out v
 	tex.x = 0.5 + 0.49 * normal.x;
 	tex.y = 0.5 + 0.49 * normal.y;
 	result = texture2D(ima, tex) * mask;
+}
+
+
+
+
+
+
+
+/* ************************* PBR ********************************** */
+
+/* needed for uint type and bitwise operation */
+#extension GL_EXT_gpu_shader4: enable
+
+//Hammersley points
+uniform vec4 hammersley64[64] 	= vec4[64](vec4(0,0,1,0),vec4(0.015625,0.5,-1,1.224646798818428e-16),vec4(0.03125,0.25,0,1),vec4(0.046875,0.75,-1.8369701961596905e-16,-1),vec4(0.0625,0.125,0.7071067811865475,0.7071067811865475),vec4(0.078125,0.625,-0.7071067811865476,-0.7071067811865474),vec4(0.09375,0.375,-0.7071067811865474,0.7071067811865476),vec4(0.109375,0.875,0.7071067811865474,-0.7071067811865476),vec4(0.125,0.0625,0.9238795325112867,0.3826834323650898),vec4(0.140625,0.5625,-0.9238795325112867,-0.38268343236508967),vec4(0.15625,0.3125,-0.3826834323650897,0.9238795325112867),vec4(0.171875,0.8125,0.38268343236509006,-0.9238795325112866),vec4(0.1875,0.1875,0.3826834323650898,0.9238795325112867),vec4(0.203125,0.6875,-0.38268343236509034,-0.9238795325112865),vec4(0.21875,0.4375,-0.9238795325112867,0.3826834323650898),vec4(0.234375,0.9375,0.9238795325112865,-0.38268343236509034),vec4(0.25,0.03125,0.9807852804032304,0.19509032201612825),vec4(0.265625,0.53125,-0.9807852804032304,-0.19509032201612836),vec4(0.28125,0.28125,-0.1950903220161282,0.9807852804032304),vec4(0.296875,0.78125,0.19509032201612828,-0.9807852804032304),vec4(0.3125,0.15625,0.5555702330196022,0.8314696123025452),vec4(0.328125,0.65625,-0.555570233019602,-0.8314696123025453),vec4(0.34375,0.40625,-0.8314696123025453,0.555570233019602),vec4(0.359375,0.90625,0.8314696123025452,-0.5555702330196022),vec4(0.375,0.09375,0.8314696123025452,0.5555702330196022),vec4(0.390625,0.59375,-0.8314696123025455,-0.5555702330196018),vec4(0.40625,0.34375,-0.5555702330196018,0.8314696123025455),vec4(0.421875,0.84375,0.5555702330196017,-0.8314696123025455),vec4(0.4375,0.21875,0.19509032201612825,0.9807852804032304),vec4(0.453125,0.71875,-0.19509032201612864,-0.9807852804032304),vec4(0.46875,0.46875,-0.9807852804032303,0.19509032201612844),vec4(0.484375,0.96875,0.9807852804032304,-0.19509032201612864),vec4(0.5,0.015625,0.9951847266721954,0.09801714032956045),vec4(0.515625,0.515625,-0.9951847266721954,-0.09801714032956044),vec4(0.53125,0.265625,-0.0980171403295605,0.9951847266721954),vec4(0.546875,0.765625,0.09801714032955995,-0.9951847266721954),vec4(0.5625,0.140625,0.6343932841636446,0.7730104533627358),vec4(0.578125,0.640625,-0.634393284163645,-0.7730104533627356),vec4(0.59375,0.390625,-0.7730104533627358,0.6343932841636446),vec4(0.609375,0.890625,0.7730104533627354,-0.6343932841636452),vec4(0.625,0.078125,0.8819212643483537,0.4713967368259969),vec4(0.640625,0.578125,-0.8819212643483537,-0.4713967368259969),vec4(0.65625,0.328125,-0.47139673682599703,0.8819212643483537),vec4(0.671875,0.828125,0.4713967368259968,-0.8819212643483537),vec4(0.6875,0.203125,0.29028467725446183,0.9569403357322075),vec4(0.703125,0.703125,-0.29028467725446216,-0.9569403357322074),vec4(0.71875,0.453125,-0.9569403357322075,0.29028467725446183),vec4(0.734375,0.953125,0.9569403357322074,-0.29028467725446216),vec4(0.75,0.046875,0.9569403357322075,0.29028467725446194),vec4(0.765625,0.546875,-0.9569403357322075,-0.2902846772544617),vec4(0.78125,0.296875,-0.29028467725446183,0.9569403357322075),vec4(0.796875,0.796875,0.2902846772544617,-0.9569403357322075),vec4(0.8125,0.171875,0.4713967368259971,0.8819212643483536),vec4(0.828125,0.671875,-0.47139673682599725,-0.8819212643483536),vec4(0.84375,0.421875,-0.8819212643483536,0.4713967368259971),vec4(0.859375,0.921875,0.8819212643483536,-0.47139673682599725),vec4(0.875,0.109375,0.7730104533627358,0.6343932841636446),vec4(0.890625,0.609375,-0.773010453362736,-0.6343932841636445),vec4(0.90625,0.359375,-0.6343932841636445,0.773010453362736),vec4(0.921875,0.859375,0.6343932841636447,-0.7730104533627358),vec4(0.9375,0.234375,0.09801714032956065,0.9951847266721954),vec4(0.953125,0.734375,-0.09801714032956026,-0.9951847266721954),vec4(0.96875,0.484375,-0.9951847266721954,0.09801714032956065),vec4(0.984375,0.984375,0.9951847266721954,-0.09801714032956026));
+uniform vec4 hammersley32[32] 	= vec4[32](vec4(0,0,1,0),vec4(0.03125,0.5,-1,1.224646798818428e-16),vec4(0.0625,0.25,0,1),vec4(0.09375,0.75,-1.8369701961596905e-16,-1),vec4(0.125,0.125,0.7071067811865475,0.7071067811865475),vec4(0.15625,0.625,-0.7071067811865476,-0.7071067811865474),vec4(0.1875,0.375,-0.7071067811865474,0.7071067811865476),vec4(0.21875,0.875,0.7071067811865474,-0.7071067811865476),vec4(0.25,0.0625,0.9238795325112867,0.3826834323650898),vec4(0.28125,0.5625,-0.9238795325112867,-0.38268343236508967),vec4(0.3125,0.3125,-0.3826834323650897,0.9238795325112867),vec4(0.34375,0.8125,0.38268343236509006,-0.9238795325112866),vec4(0.375,0.1875,0.3826834323650898,0.9238795325112867),vec4(0.40625,0.6875,-0.38268343236509034,-0.9238795325112865),vec4(0.4375,0.4375,-0.9238795325112867,0.3826834323650898),vec4(0.46875,0.9375,0.9238795325112865,-0.38268343236509034),vec4(0.5,0.03125,0.9807852804032304,0.19509032201612825),vec4(0.53125,0.53125,-0.9807852804032304,-0.19509032201612836),vec4(0.5625,0.28125,-0.1950903220161282,0.9807852804032304),vec4(0.59375,0.78125,0.19509032201612828,-0.9807852804032304),vec4(0.625,0.15625,0.5555702330196022,0.8314696123025452),vec4(0.65625,0.65625,-0.555570233019602,-0.8314696123025453),vec4(0.6875,0.40625,-0.8314696123025453,0.555570233019602),vec4(0.71875,0.90625,0.8314696123025452,-0.5555702330196022),vec4(0.75,0.09375,0.8314696123025452,0.5555702330196022),vec4(0.78125,0.59375,-0.8314696123025455,-0.5555702330196018),vec4(0.8125,0.34375,-0.5555702330196018,0.8314696123025455),vec4(0.84375,0.84375,0.5555702330196017,-0.8314696123025455),vec4(0.875,0.21875,0.19509032201612825,0.9807852804032304),vec4(0.90625,0.71875,-0.19509032201612864,-0.9807852804032304),vec4(0.9375,0.46875,-0.9807852804032303,0.19509032201612844),vec4(0.96875,0.96875,0.9807852804032304,-0.19509032201612864));
+
+/* Tiny Encryption Algorithm (used for noise generation) */
+uvec2 TEA(uvec2 v)
+{
+	/* set up */
+	uint v0 = uint(v.x);
+	uint v1 = uint(v.y);
+	uint sum = 0u;
+
+    /* cache key */
+    uint k[4] = uint[4](0xA341316Cu , 0xC8013EA4u , 0xAD90777Du , 0x7E95761Eu );
+
+    /* basic cycle start */
+    for (int i = 0; i < 3; i++) {
+        sum += 0x9e3779b9;  /* a key schedule constant */
+        v0 += ((v1 << 4u) + k[0]) ^ (v1 + sum) ^ ((v1 >> 5u) + k[1]);
+        v1 += ((v0 << 4u) + k[2]) ^ (v0 + sum) ^ ((v0 >> 5u) + k[3]);
+    }
+
+    return uvec2(v0, v1);
+}
+
+/* From http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html */
+uint radicalInverse_VdC(uint bits) {
+	bits = (bits << 16u) | (bits >> 16u);
+	bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+	bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+	bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+	bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+	return bits;
+}
+
+vec4 hammersley2d(uint i, uint N, uvec2 random) {
+	float E1 = fract( float(i) / float(N) + float( random.x & uint(0xffff) ) / float(1<<16) );
+	float E2 = float( radicalInverse_VdC(i) ^ uint(random.y) ) * 2.3283064365386963e-10;
+	float phi = 2.0f * M_PI * E2;
+	return vec4( E1, E2, cos(phi), sin(phi) );
+}
+
+vec4 sampleCubemap_LOD(samplerCube envMap, vec3 co, float Lod)
+{
+	vec4 sample;
+	srgb_to_linearrgb( textureCubeLod(envMap, co, Lod), sample);
+	return sample;
+}
+
+/* From : http://the-witness.net/news/2012/02/seamless-cube-map-filtering/ */
+vec3 fix_cube_lookup(vec3 v, float cube_size, float Lod) {
+	float M = max(max(abs(v.x), abs(v.y)), abs(v.z));
+	/* cube_size is the size of the base mipmap */
+	float scale = 1.0 - exp2(Lod) / cube_size;
+	if (abs(v.x) != M) v.x *= scale;
+	if (abs(v.y) != M) v.y *= scale;
+	if (abs(v.z) != M) v.z *= scale;
+
+   return v;
+}
+
+vec4 sampleCube_LodBlend_withSeamFix(float Lod, samplerCube envMap, vec3 Ln, float cubeSize)
+{
+	float lodBlend = fract(Lod);
+	float Lod1 = max(floor(Lod),0.0);
+	float Lod2 = max(ceil(Lod),0.0);
+	vec4 CubeLod1 = sampleCubemap_LOD( envMap, fix_cube_lookup(Ln, cubeSize, Lod1), Lod1 );
+	vec4 CubeLod2 = sampleCubemap_LOD( envMap, fix_cube_lookup(Ln, cubeSize, Lod2), Lod2 );
+	return mix(CubeLod1, CubeLod2, lodBlend);
+}
+
+vec4 sampleCube_LodBlend(float Lod, samplerCube envMap, vec3 Ln)
+{
+	float lodBlend = fract(Lod);
+	float Lod1 = max(floor(Lod),0.0);
+	float Lod2 = max(ceil(Lod),0.0);
+	vec4 CubeLod1 = sampleCubemap_LOD( envMap, Ln, Lod1 );
+	vec4 CubeLod2 = sampleCubemap_LOD( envMap, Ln, Lod2 );
+	return mix(CubeLod1, CubeLod2, lodBlend);
+}
+
+float D_GGX(float nh, float a, float a2)
+{
+	float tmp = a / (nh*nh*(a2-1.0)+1.0);
+	return tmp * tmp * M_1_PI;
+}
+
+vec3 F_Shlick(float vh,	vec3 F0, vec3 fresnelStrength)
+{
+	float fresnelFact = pow(2.0, (-5.55473*vh - 6.98316) * vh);
+	return mix(F0, vec3(1.0, 1.0, 1.0), fresnelFact*fresnelStrength);
+}
+
+float G1_Shlick(float nlv,	float k)
+{
+	return nlv*(1.0-k) + k;
+}
+
+float G_Smith(float nl, float nv, float roughness)
+{
+	float k = roughness * roughness * 0.5;
+	return 1.0 / (G1_Shlick(nl,k) * G1_Shlick(nv,k));
+}
+
+void shade_ggx_spec(vec3 n, vec3 l, vec3 v, float shadeFac, vec3 specColor, vec3 lightColor, float visFac, float roughness, out vec3 specfac)
+{
+	vec3 h = normalize(v + l);
+
+	float vh = max( 0.0, dot(v, h) );
+	float nl = max( 0.0, dot(n, l) );
+	float nv = max( 0.0, dot(n, v) );
+	float nh = max( 0.0, dot(n, h) );
+
+	/* Convert from blender hardness [1-511] to [0-1] */
+	roughness = 1.0 - ((roughness-1.0) / 510.0);
+
+	float a = max( roughness * roughness, 1e-4 );
+	float a2 = a*a;
+
+	/* Fresnel Term : Schlick
+	 * Specular Distribution (NDF) : GGX (Trowbridge-Reitz)
+	 * Geometric Shadowing Term : Smith */
+	vec3 F 	= F_Shlick(vh,specColor,vec3(1.0));
+	float D = D_GGX(nh,a,a2);
+	float G = G_Smith(nl,nv,roughness);
+
+	/* Multiply F last to keep fresnel color */
+	specfac = lightColor * ( F * (D * G / 4.0) * nl*nv ) * shadeFac * visFac;
+}
+
+vec3 importance_sample_GGX(vec4 Xi, float a2)
+{
+	float Phi = 2.0 * M_PI * Xi.y;
+	float CosTheta = sqrt( (1.0 - Xi.x) / ( 1.0 + (a2 - 1.0) * Xi.x ) );
+	float SinTheta = sqrt( 1.0 - CosTheta * CosTheta );
+
+	return vec3(SinTheta*Xi.z, SinTheta*Xi.w, CosTheta);
+}
+
+vec3 tangentSpace( vec3 vector, vec3 wN, vec3 wT, vec3 wB)
+{
+	return wT * vector.x + wB * vector.y + wN * vector.z;
+}
+
+void world_normal(vec3 N, mat4 viewinvmat, out vec3 result)
+{
+	result = (viewinvmat*vec4(N, 0.0)).xyz;
+}
+
+void world_to_viewspace(vec3 v, mat4 viewmat, out vec3 result)
+{
+	result = (viewmat*vec4(v, 0.0)).xyz * -1.0;
+}
+
+void node_pbr_ibl_presampling(
+	float roughness, vec3 wN, vec3 I, mat4 viewinvmat,
+	out float roughness_out, out float a, out float a2, out float nv,
+	out vec3 wI_out, out vec3 wN_out, out vec3 wT_out, out vec3 wB_out)
+{
+	/* handle perspective/orthographic */
+	I = (gl_ProjectionMatrix[3][3] == 0.0)? normalize(I): vec3(0.0, 0.0, -1.0);
+	vec3 wI = normalize( (viewinvmat*vec4(I,0.0)).xyz );
+
+	/* Generate tangent space */
+	wN = normalize(wN);
+	vec3 UpVector = abs(wN.z) < 0.99999 ? vec3(0.0,0.0,1.0) : vec3(1.0,0.0,0.0);
+	vec3 wT = normalize( cross(UpVector,wN) );
+	vec3 wB = cross(wN,wT);
+
+	/* TODO clean this mess :
+	 * Better convert the sampling algo
+	 * blender space conversion */
+	wI_out = wI * vec3(-1.0,-1.0,1.0);
+	wN_out = wN * vec3(1.0,1.0,-1.0);
+	wT_out = wT * vec3(1.0,1.0,-1.0);
+	wB_out = wB * vec3(1.0,1.0,-1.0);
+
+	roughness_out = max( 0.0132, roughness ); /* Error threshold */
+	nv = max(1e-8, abs(dot(wI, wN)));
+	a  = max(1e-8, roughness_out*roughness_out);
+	a2 = max(1e-8, a*a);
+}
+
+void node_pbr_ibl_sampling(samplerCube envMap, uint i, uint NumSamples, uvec2 random, float cubeSizeSquared, float a2, vec3 wN, vec3 wT, vec3 wB, vec3 wI, mat4 envMatrix, float Weight, vec3 FilteredColor, out float outWeight, out vec3 outFilteredColor)
+{
+	vec4 Xi = hammersley2d( i, NumSamples, random );
+	vec3 Hn = tangentSpace( importance_sample_GGX(Xi, a2), wN, wT, wB );
+	vec3 Ln = -reflect(wI, Hn);
+
+	float nl = max(1e-8, dot( wN, Ln ));
+	float nh = max(1e-8, dot( wN, Hn ));
+
+	/* convert space to apply Blender's space matrix transform */
+	Ln = Ln * vec3(1.0, 1.0, -1.0);
+	Ln = (envMatrix * vec4(Ln.xyz, 0.0) ).xyz ;
+	Ln = Ln.yzx * vec3(1.0, -1.0, 1.0);
+
+	float d = (nh * nh) * (a2 - 1.0) + 1.0;
+	float pdf = (nh * a2) / (M_PI * d*d);
+	float Lod = (0.5 * log2( cubeSizeSquared / float(NumSamples) ) ) - 0.5*log2( pdf );
+
+	outFilteredColor = FilteredColor + sampleCube_LodBlend(Lod, envMap, Ln).rgb * nl;
+	outWeight = Weight + nl;
+}
+
+
+/* Horizon fading trick from http://marmosetco.tumblr.com/post/81245981087 */
+void horizon_fade(vec3 vN, mat4 viewinvmat, float horizFadePower, vec3 wFinalN, vec3 wI, vec4 colorIn, out vec4 colorOut)
+{
+	vec3 wVertexNormal 	= (viewinvmat*vec4(vN,0.0)).xyz * vec3(1.0,1.0,-1.0);;
+	vec3 Ln = reflect(-wI, wFinalN);
+	float horiz = dot(Ln, wVertexNormal);
+	horiz = clamp( 1.0 + horizFadePower * horiz, 0.0, 1.0 );
+	horiz *= horiz;
+	colorOut = colorIn * vec4(horiz);
+}
+
+vec2 IntegrateBRDF( float roughness, float nv, float a2)
+{
+	vec3 V;
+	V.x = sqrt( 1.0 - nv * nv );
+	V.y = 0.0;
+	V.z = nv;
+
+	float A = 0.0;
+	float B = 0.0;
+
+	float Vis_SmithV = nv + sqrt( nv * (nv - nv * a2) + a2 );
+
+	const int NumSamples = 64;
+	for ( int i = 0; i < NumSamples; i++ )
+	{
+		vec4 Xi = hammersley64[i];
+		vec3 Hn = importance_sample_GGX(Xi, a2);
+		vec3 Ln = 2.0 * dot( V, Hn ) * Hn - V;
+
+		float nl = max(1e-8, Ln.z);
+		float nh = max(1e-8, Hn.z);
+		float vh = max(1e-8, dot( V, Hn ));
+
+	    float Vis_SmithL = nl + sqrt( nl * (nl - nl * a2) + a2 );
+		float Vis = 1.0 / ( Vis_SmithV * Vis_SmithL );
+
+		/* Incident light = nl
+		 * pdf = D * nh / (4 * vh)
+		 * nl * Vis / pdf */
+		float nl_Vis_PDF = nl * Vis * (4.0 * vh / nh);
+
+		float Fc = pow( 1.0 - vh, 5.0 );
+		A += (1.0 - Fc) * nl_Vis_PDF;
+		B += Fc * nl_Vis_PDF;
+	}
+
+	return vec2( A, B ) / float(NumSamples);
+}
+
+void node_pbr_ibl_32_cubemap(samplerCube envMap, float roughness, vec3 wN, vec4 fresnelStrength, vec4 specColor, float horizFadePower, vec3 vN, vec3 I, mat4 viewinvmat, float cubeSizeSquared, mat4 envMatrix, out vec4 sampleOut)
+{
+
+	float a, a2, nv;
+	vec3 wT, wB, wI;
+	node_pbr_ibl_presampling(roughness, wN, I, viewinvmat, roughness, a, a2, nv, wI, wN, wT, wB);
+
+	/* Noise for the importance sample Envmap */
+	uvec2 random = uvec2(gl_FragCoord.x,gl_FragCoord.y);
+	random = TEA(random);
+	random.x ^= uint( 21389 );
+	random.y ^= uint( 49233 );
+
+	/* Integrating Envmap */
+	vec3 FilteredColor = vec3(0.0);
+	float Weight = 0.0;
+
+	const uint NumSamples = 32u;
+	for ( uint i = 0u; i < NumSamples; i++ ) {
+		node_pbr_ibl_sampling(envMap, i, NumSamples, random, cubeSizeSquared, a2, wN, wT, wB, wI, envMatrix, Weight, FilteredColor, Weight, FilteredColor);
+	}
+
+	sampleOut = vec4( FilteredColor / max( Weight, 0.001 ), 1.0);
+
+	/* Importance sampled integrated G * F */
+	random = uvec2(0,0);
+	vec2 AB = IntegrateBRDF(roughness, nv, a2);
+
+	sampleOut = sampleOut * AB.x * specColor + sampleOut * AB.y * max(fresnelStrength, specColor);
+
+	horizon_fade(vN, viewinvmat, horizFadePower, wN, wI, sampleOut, sampleOut);
+}
+
+void node_pbr_ibl_64_cubemap(samplerCube envMap, float roughness, vec3 wN, vec4 fresnelStrength, vec4 specColor, float horizFadePower, vec3 vN, vec3 I, mat4 viewinvmat, float cubeSizeSquared, mat4 envMatrix, out vec4 sampleOut)
+{
+
+	float a, a2, nv;
+	vec3 wT, wB, wI;
+	node_pbr_ibl_presampling(roughness, wN, I, viewinvmat, roughness, a, a2, nv, wI, wN, wT, wB);
+
+	/* Noise for the importance sample Envmap */
+	uvec2 random = uvec2(gl_FragCoord.x,gl_FragCoord.y);
+	random = TEA(random);
+	random.x ^= uint( 21389 );
+	random.y ^= uint( 49233 );
+
+	/* Integrating Envmap */
+	vec3 FilteredColor = vec3(0.0);
+	float Weight = 0.0;
+	vec4 sample;
+
+	const uint NumSamples = 64u;
+	for ( uint i = 0u; i < NumSamples; i++ ) {
+		node_pbr_ibl_sampling(envMap, i, NumSamples, random, cubeSizeSquared, a2, wN, wT, wB, wI, envMatrix, Weight, FilteredColor, Weight, FilteredColor);
+	}
+
+	sampleOut = vec4( FilteredColor / max( Weight, 0.001 ), 1.0);
+
+	/* Importance sampled integrated G * F */
+	random = uvec2(0,0);
+	vec2 AB = IntegrateBRDF(roughness, nv, a2);
+
+	sampleOut = sampleOut * AB.x * specColor + sampleOut * AB.y * max(fresnelStrength, specColor);
+
+	horizon_fade(vN, viewinvmat, horizFadePower, wN, wI, sampleOut, sampleOut);
+}
+
+
+void node_pbr_ibl_approx_cubemap(samplerCube envMap, float roughness, vec3 wN, vec4 fresnelStrength, vec4 specColor, float horizFadePower, vec3 vN, vec3 I, mat4 viewinvmat, float MaxLod, float cubeSize, mat4 envMatrix, out vec4 sampleOut)
+{
+	float a, a2, nv;
+	vec3 wT, wB, wI;
+	node_pbr_ibl_presampling(roughness, wN, I, viewinvmat, roughness, a, a2, nv, wI, wN, wT, wB);
+
+	vec3 Ln = -reflect(wI, wN);
+
+	/* Another stupid conversion */
+	Ln = Ln * vec3(1.0,1.0,-1.0);
+	Ln = (envMatrix * vec4(Ln.xyz,0.0) ).xyz ;
+	Ln = Ln.yzx * vec3(1.0,-1.0,1.0);
+
+	/* no noise */
+	uvec2 random = uvec2(0,0);
+
+	/* Must be the same as prefilter settings */
+	const float mipScale = 1.2;
+	const float roughestMip = 1.0;
+	float Lod = log2(roughness) * mipScale + MaxLod - 1.0 - roughestMip;
+
+	sampleOut = vec4( sampleCube_LodBlend_withSeamFix(Lod, envMap, Ln, cubeSize).rgb, 1.0);
+
+	/* Importance sampled integrated G * F */
+	vec2 AB = IntegrateBRDF(roughness, nv, a2);
+
+	sampleOut = sampleOut * AB.x * specColor + sampleOut * AB.y * max(fresnelStrength, specColor);
+
+	horizon_fade(vN, viewinvmat, horizFadePower, wN, wI, sampleOut, sampleOut);
+}
+
+void node_pbr_ibl_empty(vec3 specColor, float roughness, vec3 wN, float MaxLod, out vec4 ibl)
+{
+	ibl = vec4(0.0);
+}
+
+/* http://seblagarde.wordpress.com/2012/01/08/pi-or-not-to-pi-in-game-lighting-equation/ */
+void irradianceFromSH(vec3 n, vec3 sh0, vec3 sh1, vec3 sh2, vec3 sh3, vec3 sh4, vec3 sh5, vec3 sh6, vec3 sh7, vec3 sh8,	mat4 envRot, out vec4 irradiance)
+{
+	n = (envRot*vec4(n,0.0)).xzy;
+	vec3 sh = vec3(0.0);
+
+	sh += 0.282095 * sh0;
+
+	sh += -0.488603 * n.y * sh1;
+	sh += 0.488603 * n.z * sh2;
+	sh += -0.488603 * n.x * sh3;
+
+	sh += 1.092548 * n.x * n.y * sh4;
+	sh += -1.092548 * n.y * n.z * sh5;
+	sh += 0.315392 * (3.0 * n.z * n.z - 1.0) * sh6;
+	sh += -1.092548 * n.x * n.z * sh7;
+	sh += 0.546274 * (n.x * n.x - n.y * n.y) * sh8;
+
+	irradiance = vec4( sh, 1.0 );
 }

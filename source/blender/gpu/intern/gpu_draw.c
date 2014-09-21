@@ -583,7 +583,8 @@ int GPU_verify_image(Image *ima, ImageUser *iuser, int tftile, bool compare, boo
 						ibuf->x, ibuf->y, ibuf->x, ibuf->x);
 					IMB_buffer_float_unpremultiply(srgb_frect, ibuf->x, ibuf->y);
 					/* clamp buffer colors to 1.0 to avoid artifacts due to glu for hdr images */
-					IMB_buffer_float_clamp(srgb_frect, ibuf->x, ibuf->y);
+					if (!GTS.gpu_mipmap && ibuf->miptot == 1)
+						IMB_buffer_float_clamp(srgb_frect, ibuf->x, ibuf->y);
 					frect= srgb_frect + texwinsy*ibuf->x + texwinsx;
 				}
 				else
@@ -609,7 +610,8 @@ int GPU_verify_image(Image *ima, ImageUser *iuser, int tftile, bool compare, boo
 							ibuf->x, ibuf->y, ibuf->x, ibuf->x);
 					IMB_buffer_float_unpremultiply(srgb_frect, ibuf->x, ibuf->y);
 					/* clamp buffer colors to 1.0 to avoid artifacts due to glu for hdr images */
-					IMB_buffer_float_clamp(srgb_frect, ibuf->x, ibuf->y);
+					if (!GTS.gpu_mipmap && ibuf->miptot == 1)
+						IMB_buffer_float_clamp(srgb_frect, ibuf->x, ibuf->y);
 				}
 				else
 					frect= ibuf->rect_float;
@@ -664,7 +666,7 @@ int GPU_verify_image(Image *ima, ImageUser *iuser, int tftile, bool compare, boo
 		GPU_create_gl_tex_compressed(bind, rect, rectw, recth, mipmap, ima, ibuf);
 	else
 #endif
-		GPU_create_gl_tex(bind, rect, frect, rectw, recth, mipmap, use_high_bit_depth, ima);
+		GPU_create_gl_tex(bind, rect, frect, rectw, recth, mipmap, use_high_bit_depth, do_color_management, ima, ibuf);
 	
 	/* mark as non-color data texture */
 	if (*bind) {
@@ -687,12 +689,264 @@ int GPU_verify_image(Image *ima, ImageUser *iuser, int tftile, bool compare, boo
 	return *bind;
 }
 
+static void free_envmapdata(EnvMap *env)
+{
+	unsigned int part;
+
+	for (part=0; part<6; part++) {
+		ImBuf *ibuf= env->gpucube[part];
+		if (ibuf) {
+			IMB_freeImBuf(ibuf);
+			env->gpucube[part] = NULL;
+		}
+	}
+	env->ok= 0;
+}
+
+static void envmap_split_ima(EnvMap *env, ImBuf *ibuf)
+{
+	int dx, part;
+
+	free_envmapdata(env);
+	dx = ibuf->y/2;
+
+	if (3*dx != ibuf->x) {
+		printf("GPU: Incorrect envmap size\n");
+		env->gpuok = 0;
+		//env->ima->ok = 0;
+	}
+	else {
+		for (part=0; part<6; part++) {
+			env->gpucube[part] = IMB_allocImBuf(dx, dx, 32, IB_rect | IB_rectfloat );
+		}
+		IMB_rectcpy(env->gpucube[0], ibuf,
+			0, 0, 0, 0, dx, dx);
+		IMB_rectcpy(env->gpucube[1], ibuf,
+			0, 0, dx, 0, dx, dx);
+		IMB_rectcpy(env->gpucube[2], ibuf,
+			0, 0, 2*dx, 0, dx, dx);
+		IMB_rectcpy(env->gpucube[3], ibuf,
+			0, 0, 0, dx, dx, dx);
+		IMB_rectcpy(env->gpucube[4], ibuf,
+			0, 0, dx, dx, dx, dx);
+		IMB_rectcpy(env->gpucube[5], ibuf,
+			0, 0, 2*dx, dx, dx, dx);
+
+		env->gpuok = ENV_OSA;
+	}
+}
+
+int GPU_create_gl_cube(EnvMap *envmap, bool mipmap, bool is_data, ImageUser *iuser)
+{
+	unsigned int *pix = NULL;
+	unsigned int *bind = NULL;
+	float *frect = NULL;
+	unsigned int *scalerect = NULL;
+	float *fscalerect = NULL;
+	float *srgb_frect = NULL;
+	int miplevel, nbrofmips;
+	ImBuf *mip_ibuf;
+	ImBuf *face_ibuf;
+	ImBuf *ibuf = NULL, *ibuf_ima = NULL;
+	bool use_high_bit_depth = false, do_color_management= false;
+	int tpx, tpy, rectw, recth;
+	int face;
+	int FACE_INDEX[6] = {GL_TEXTURE_CUBE_MAP_POSITIVE_Y, /* Ordered to fit blender cubemap order */
+						 GL_TEXTURE_CUBE_MAP_NEGATIVE_Y,
+						 GL_TEXTURE_CUBE_MAP_POSITIVE_Z,
+						 GL_TEXTURE_CUBE_MAP_NEGATIVE_X,
+						 GL_TEXTURE_CUBE_MAP_NEGATIVE_Z,
+						 GL_TEXTURE_CUBE_MAP_POSITIVE_X};
+
+	/* check if we have a valid image */
+	if (!envmap || !envmap->ima)
+		return 0;
+
+	/* check if we have a valid image buffer */
+	ibuf = BKE_image_acquire_ibuf(envmap->ima, iuser, NULL);
+
+	if (!ibuf)
+		return 0;
+
+	bind = &envmap->bindcode;
+
+	if (*bind != 0) {
+		/* enable opengl drawing with textures */
+		glBindTexture(GL_TEXTURE_CUBE_MAP, *bind);
+		BKE_image_release_ibuf(envmap->ima, ibuf, NULL);
+
+		return *bind;
+	}
+
+	if (envmap->ima->pbr_last_projection && envmap->ima->pbr_last_projection != SHD_PROJ_CUBEMAP + 1) {
+		ibuf_ima = ibuf;
+		ibuf = ibuf->cubemap_ibuf;
+	}
+
+	/* just in case the cubmap does not exists for some reason */
+	if (!ibuf) {
+		BKE_image_release_ibuf(envmap->ima, ibuf_ima, NULL);
+		return 0;
+	}
+
+
+	if (ibuf->rect_float) {
+		if (U.use_16bit_textures) {
+			/* use high precision textures. This is relatively harmless because OpenGL gives us
+			 * a high precision format only if it is available */
+			use_high_bit_depth = true;
+		}
+
+		/* TODO unneeded when float images are correctly treated as linear always */
+		if (!is_data)
+			do_color_management = true;
+
+		if (ibuf->rect==NULL)
+			IMB_rect_from_float(ibuf);
+	}
+
+	/* create image */
+	glGenTextures(1, (GLuint *)bind);
+	glBindTexture(GL_TEXTURE_CUBE_MAP, *bind);
+
+	/* Seamless cubemap */
+	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+
+	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_BASE_LEVEL, 0);
+	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	if (GLEW_VERSION_1_2)
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+	/* Test if we can use the envmap mipmaps ibuf, if not they will be gpu generated */
+	if (envmap->gpu_use_mips)
+		nbrofmips = (ibuf->miptot == 0) ? 1 : ibuf->miptot; /* Clamp to 1 */
+	else
+		nbrofmips = 1;
+
+	if (nbrofmips > 1)
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_LEVEL, nbrofmips-1);
+
+	if (GPU_get_mipmap() && mipmap) {
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, gpu_get_mipmap_filter(0));
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, gpu_get_mipmap_filter(1));
+	}
+	else {
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, gpu_get_mipmap_filter(1));
+	}
+
+	for (miplevel = 0; miplevel < nbrofmips; ++miplevel) {
+		mip_ibuf = (miplevel == 0) ? ibuf : ibuf->mipmap[miplevel - 1];
+
+		if (!mip_ibuf) {
+			return 0;
+		}
+
+		/* Split this mipmap */
+		envmap_split_ima(envmap, mip_ibuf);
+
+		if (!envmap->gpuok)
+			break;
+
+		for (face = 0; face < 6; ++face) {
+
+			face_ibuf = envmap->gpucube[face];
+
+			if (!face_ibuf)
+				continue;
+
+			frect = face_ibuf->rect_float;
+			pix = face_ibuf->rect;
+			tpx = rectw = face_ibuf->x;
+			tpy = recth = face_ibuf->y;
+
+			if (do_color_management) {
+				srgb_frect = MEM_mallocN(rectw*recth*sizeof(*srgb_frect)*4, "mip_buf_col_cor");
+				IMB_buffer_float_from_float(srgb_frect, face_ibuf->rect_float,
+						face_ibuf->channels, IB_PROFILE_SRGB, IB_PROFILE_LINEAR_RGB, true,
+						rectw, recth, rectw, recth);
+				IMB_buffer_float_unpremultiply(srgb_frect, rectw, recth);
+				if (!GTS.gpu_mipmap && ibuf->miptot == 1)
+						IMB_buffer_float_clamp(srgb_frect, ibuf->x, ibuf->y);
+				frect = srgb_frect;
+			}
+
+			/* scale if not a power of two. this is not strictly necessary for newer
+			 * GPUs (OpenGL version >= 2.0) since they support non-power-of-two-textures
+			 * Then don't bother scaling for hardware that supports NPOT textures! */
+			if ((!GPU_non_power_of_two_support() && !is_power_of_2_resolution(rectw, recth)) ||
+				is_over_resolution_limit(rectw, recth)) {
+				rectw = smaller_power_of_2_limit(rectw);
+				recth = smaller_power_of_2_limit(recth);
+
+				if (use_high_bit_depth) {
+					fscalerect= MEM_mallocN(rectw*recth*sizeof(*fscalerect)*4, "fscalerect");
+					gluScaleImage(GL_RGBA, tpx, tpy, GL_FLOAT, frect, rectw, recth, GL_FLOAT, fscalerect);
+
+					frect = fscalerect;
+				}
+				else {
+					scalerect= MEM_mallocN(rectw*recth*sizeof(*scalerect), "scalerect");
+					gluScaleImage(GL_RGBA, tpx, tpy, GL_UNSIGNED_BYTE, pix, rectw, recth, GL_UNSIGNED_BYTE, scalerect);
+
+					pix = scalerect;
+				}
+			}
+
+			if (nbrofmips == 1 && GPU_get_mipmap() && mipmap && !GTS.gpu_mipmap) {
+				if (use_high_bit_depth || do_color_management)
+					gluBuild2DMipmaps(FACE_INDEX[face], GL_RGBA16F, rectw, recth, GL_RGBA, GL_FLOAT, frect);
+				else
+					gluBuild2DMipmaps(FACE_INDEX[face], GL_RGBA, rectw, recth, GL_RGBA, GL_UNSIGNED_BYTE, pix);
+			}
+			else {
+				if (use_high_bit_depth || do_color_management)
+					glTexImage2D(FACE_INDEX[face], miplevel,  GL_RGBA16F,  rectw, recth, 0, GL_RGBA, GL_FLOAT, frect);
+				else
+					glTexImage2D(FACE_INDEX[face], miplevel,  GL_RGBA,  rectw, recth, 0, GL_RGBA, GL_UNSIGNED_BYTE, pix);
+			}
+
+			if (srgb_frect)
+				MEM_freeN(srgb_frect);
+			if (scalerect)
+				MEM_freeN(scalerect);
+			if (fscalerect)
+				MEM_freeN(fscalerect);
+
+		}
+
+		if (!(GPU_get_mipmap() && mipmap))
+			break;
+		else if (nbrofmips == 1 && GPU_get_mipmap() && mipmap && GTS.gpu_mipmap) {
+			gpu_generate_mipmap(GL_TEXTURE_CUBE_MAP);
+		}
+	}
+
+	if (GLEW_EXT_texture_filter_anisotropic)
+		glTexParameterf(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_ANISOTROPY_EXT, GPU_get_anisotropic());
+	/* set to modulate with vertex color */
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
+	//Cleaning
+	if (ibuf_ima)
+		BKE_image_release_ibuf(envmap->ima, ibuf_ima, NULL);
+	else
+		BKE_image_release_ibuf(envmap->ima, ibuf, NULL);
+	free_envmapdata(envmap);
+
+	return *bind;
+}
+
 /* Image *ima can be NULL */
 void GPU_create_gl_tex(unsigned int *bind, unsigned int *pix, float *frect, int rectw, int recth,
-                       bool mipmap, bool use_high_bit_depth, Image *ima)
+                       bool mipmap, bool use_high_bit_depth, bool do_color_management, Image *ima, ImBuf *ibuf)
 {
 	unsigned int *scalerect = NULL;
 	float *fscalerect = NULL;
+	float *srgb_frect = NULL;
+	int miplevel;
+	ImBuf *mip_ibuf;
 
 	int tpx = rectw;
 	int tpy = recth;
@@ -725,24 +979,46 @@ void GPU_create_gl_tex(unsigned int *bind, unsigned int *pix, float *frect, int 
 
 	if (!(GPU_get_mipmap() && mipmap)) {
 		if (use_high_bit_depth)
-			glTexImage2D(GL_TEXTURE_2D, 0,  GL_RGBA16,  rectw, recth, 0, GL_RGBA, GL_FLOAT, frect);
+			glTexImage2D(GL_TEXTURE_2D, 0,  GL_RGBA16F,  rectw, recth, 0, GL_RGBA, GL_FLOAT, frect);
 		else
 			glTexImage2D(GL_TEXTURE_2D, 0,  GL_RGBA,  rectw, recth, 0, GL_RGBA, GL_UNSIGNED_BYTE, pix);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, gpu_get_mipmap_filter(1));
 	}
 	else {
-		if (GTS.gpu_mipmap) {
+		if (ibuf!=NULL && ibuf->miptot > 1 && !GTS.tilemode) {
+			for (miplevel = 0; miplevel < ibuf->miptot; ++miplevel) {
+				mip_ibuf = IMB_getmipmap(ibuf, miplevel);
+				if (use_high_bit_depth) {
+					if (do_color_management) {
+						srgb_frect = MEM_mallocN(mip_ibuf->x*mip_ibuf->y*sizeof(*srgb_frect)*4, "mip_buf_col_cor");
+						IMB_buffer_float_from_float(srgb_frect, mip_ibuf->rect_float,
+								mip_ibuf->channels, IB_PROFILE_SRGB, IB_PROFILE_LINEAR_RGB, true,
+								mip_ibuf->x, mip_ibuf->y, mip_ibuf->x, mip_ibuf->x);
+						IMB_buffer_float_unpremultiply(srgb_frect, mip_ibuf->x, mip_ibuf->y);
+						glTexImage2D(GL_TEXTURE_2D, miplevel,  GL_RGBA16F,  mip_ibuf->x, mip_ibuf->y, 0, GL_RGBA, GL_FLOAT, srgb_frect);
+						MEM_freeN(srgb_frect);
+					}
+					else
+						glTexImage2D(GL_TEXTURE_2D, miplevel,  GL_RGBA16F,  mip_ibuf->x, mip_ibuf->y, 0, GL_RGBA, GL_FLOAT, mip_ibuf->rect_float);
+				}
+				else
+					glTexImage2D(GL_TEXTURE_2D, miplevel,  GL_RGBA,  mip_ibuf->x, mip_ibuf->y, 0, GL_RGBA, GL_UNSIGNED_BYTE, mip_ibuf->rect);
+			}
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, ibuf->miptot-1);
+		}
+		else if (GTS.gpu_mipmap) {
 			if (use_high_bit_depth)
-				glTexImage2D(GL_TEXTURE_2D, 0,  GL_RGBA16,  rectw, recth, 0, GL_RGBA, GL_FLOAT, frect);
+				glTexImage2D(GL_TEXTURE_2D, 0,  GL_RGBA16F,  rectw, recth, 0, GL_RGBA, GL_FLOAT, frect);
 			else
 				glTexImage2D(GL_TEXTURE_2D, 0,  GL_RGBA,  rectw, recth, 0, GL_RGBA, GL_UNSIGNED_BYTE, pix);
 
 			gpu_generate_mipmap(GL_TEXTURE_2D);
 		}
 		else {
-			if (use_high_bit_depth)
-				gluBuild2DMipmaps(GL_TEXTURE_2D, GL_RGBA16, rectw, recth, GL_RGBA, GL_FLOAT, frect);
+			if (use_high_bit_depth) {
+				gluBuild2DMipmaps(GL_TEXTURE_2D, GL_RGBA16F, rectw, recth, GL_RGBA, GL_FLOAT, frect);
+			}
 			else
 				gluBuild2DMipmaps(GL_TEXTURE_2D, GL_RGBA, rectw, recth, GL_RGBA, GL_UNSIGNED_BYTE, pix);
 		}
@@ -837,7 +1113,7 @@ void GPU_create_gl_tex_compressed(unsigned int *bind, unsigned int *pix, int x, 
 #ifndef WITH_DDS
 	(void)ibuf;
 	/* Fall back to uncompressed if DDS isn't enabled */
-	GPU_create_gl_tex(bind, pix, NULL, x, y, mipmap, 0, ima);
+	GPU_create_gl_tex(bind, pix, NULL, x, y, mipmap, 0, 0, ima, ibuf);
 #else
 
 
@@ -846,7 +1122,7 @@ void GPU_create_gl_tex_compressed(unsigned int *bind, unsigned int *pix, int x, 
 
 	if (GPU_upload_dxt_texture(ibuf) == 0) {
 		glDeleteTextures(1, (GLuint *)bind);
-		GPU_create_gl_tex(bind, pix, NULL, x, y, mipmap, 0, ima);
+		GPU_create_gl_tex(bind, pix, NULL, x, y, mipmap, 0, 0, ima, ibuf);
 	}
 #endif
 }
@@ -1044,7 +1320,7 @@ void GPU_paint_update_image(Image *ima, int x, int y, int w, int h)
 			float *buffer = MEM_mallocN(w * h * sizeof(float) * 4, "temp_texpaint_float_buf");
 			bool is_data = (ima->tpageflag & IMA_GLBIND_IS_DATA) != 0;
 			IMB_partial_rect_from_float(ibuf, buffer, x, y, w, h, is_data);
-			
+
 			if (GPU_check_scaled_image(ibuf, ima, buffer, x, y, w, h)) {
 				MEM_freeN(buffer);
 				BKE_image_release_ibuf(ima, ibuf, NULL);
@@ -1280,6 +1556,20 @@ void GPU_free_image(Image *ima)
 		ima->gputexture= NULL;
 	}
 
+	/* free envmap glsl binding */
+	if (ima->pbr_envmap) {
+		if (ima->pbr_envmap->bindcode) {
+			glDeleteTextures(1, (GLuint *)&ima->pbr_envmap->bindcode);
+			ima->pbr_envmap->bindcode= 0;
+		}
+
+		if (ima->pbr_envmap->gputexture) {
+			GPU_texture_free(ima->pbr_envmap->gputexture);
+			ima->pbr_envmap->gputexture= NULL;
+		}
+	}
+
+
 	/* free repeated image binding */
 	if (ima->repbind) {
 		glDeleteTextures(ima->totbind, (GLuint *)ima->repbind);
@@ -1336,7 +1626,7 @@ void GPU_free_images_old(void)
 		if ((ima->flag & IMA_NOCOLLECT) == 0 && ctime - ima->lastused > U.textimeout) {
 			/* If it's in GL memory, deallocate and set time tag to current time
 			 * This gives textures a "second chance" to be used before dying. */
-			if (ima->bindcode || ima->repbind) {
+			if ( (ima->pbr_envmap && ima->pbr_envmap->bindcode) || ima->bindcode || ima->repbind) {
 				GPU_free_image(ima);
 				ima->lastused = ctime;
 			}
