@@ -820,6 +820,14 @@ static void shade_one_light(GPUShadeInput *shi, GPUShadeResult *shr, GPULamp *la
 			GPU_link(mat, "shade_add_spec", t, lcol, shi->specrgb, &outcol);
 			GPU_link(mat, "shade_add_clamped", shr->spec, outcol, &shr->spec);
 		}
+		else if (ma->spec_shader==MA_SPEC_GGX){
+			GPU_link(mat, "shade_ggx_spec", vn, lv, view, shadfac, shi->specrgb, lcol, visifac, shi->har, &outcol);
+
+			if (lamp->type==LA_AREA)
+				GPU_link(mat, "shade_mul_value", inp, outcol, &outcol);
+
+			GPU_link(mat, "shade_add_clamped", shr->spec, outcol, &shr->spec);
+		}
 		else {
 			if (ma->spec_shader==MA_SPEC_PHONG)
 				GPU_link(mat, "shade_phong_spec", vn, lv, view, shi->har, &specfac);
@@ -1069,7 +1077,7 @@ static void do_material_tex(GPUShadeInput *shi)
 
 			ofs[0] = mtex->ofs[0] + 0.5f - 0.5f*mtex->size[0];
 			ofs[1] = mtex->ofs[1] + 0.5f - 0.5f*mtex->size[1];
-			ofs[2] = 0.0f;
+			ofs[2] = mtex->ofs[2] + 0.5f - 0.5f*mtex->size[2];
 			if (ofs[0] != 0.0f || ofs[1] != 0.0f || ofs[2] != 0.0f)
 				GPU_link(mat, "mtex_mapping_ofs", texco, GPU_uniform(ofs), &texco);
 
@@ -1077,6 +1085,14 @@ static void do_material_tex(GPUShadeInput *shi)
 
 			if (tex && tex->type == TEX_IMAGE && tex->ima) {
 				GPU_link(mat, "mtex_image", texco, GPU_image(tex->ima, &tex->iuser, false), &tin, &trgb);
+				rgbnor= TEX_RGB;
+
+				talpha = ((tex->imaflag & TEX_USEALPHA) && tex->ima && (tex->ima->flag & IMA_IGNORE_ALPHA) == 0);
+			}
+			else if (tex && tex->type == TEX_ENVMAP && tex->env && tex->ima && tex->env->stype == ENV_LOAD) {
+				tex->env->ima = tex->ima;
+				tex->ima->pbr_envmap = tex->env;
+				GPU_link(mat, "mtex_cubemap", texco, GPU_envmap(tex->env, &tex->iuser, false), &tin, &trgb);
 				rgbnor= TEX_RGB;
 
 				talpha = ((tex->imaflag & TEX_USEALPHA) && tex->ima && (tex->ima->flag & IMA_IGNORE_ALPHA) == 0);
@@ -1113,7 +1129,6 @@ static void do_material_tex(GPUShadeInput *shi)
 				}
 				else {
 					GPU_link(mat, "set_rgba", trgb, &tcol);
-
 					if (mtex->mapto & MAP_ALPHA)
 						GPU_link(mat, "set_value", stencil, &tin);
 					else if (talpha)
@@ -2090,7 +2105,15 @@ GPUShaderExport *GPU_shader_export(struct Scene *scene, struct Material *ma)
 		for (input = pass->inputs.first; input; input = input->next) {
 			uniform = MEM_callocN(sizeof(GPUInputUniform), "GPUInputUniform");
 
-			if (input->ima) {
+			if (input->envmap) {
+				/* cubemap sampler */
+				uniform->type = GPU_DYNAMIC_SAMPLER_CUBE;
+				uniform->datatype = GPU_DATA_1I;
+				uniform->envmap = input->envmap;
+				uniform->texnumber = input->texid;
+				BLI_strncpy(uniform->varname, input->shadername, sizeof(uniform->varname));
+			}
+			else if (input->ima) {
 				/* image sampler uniform */
 				uniform->type = GPU_DYNAMIC_SAMPLER_2DIMAGE;
 				uniform->datatype = GPU_DATA_1I;

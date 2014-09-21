@@ -116,6 +116,9 @@ def line_style_shader_nodes_poll(context):
 
 shader_node_categories = [
     # Shader Nodes
+    ShaderOldNodeCategory("SH_PBR", "Pbr Shader", items=[
+        NodeItem("ShaderNodePbrShader"),
+        ]),
     ShaderOldNodeCategory("SH_INPUT", "Input", items=[
         NodeItem("ShaderNodeMaterial"),
         NodeItem("ShaderNodeCameraData"),
@@ -160,6 +163,9 @@ shader_node_categories = [
         ]),
 
     # New Shader Nodes (Cycles)
+    ShaderNewNodeCategory("SH_NEW_PBR", "Pbr Shader", items=[
+        NodeItem("ShaderNodePbrShader"),
+        ]),
     ShaderNewNodeCategory("SH_NEW_INPUT", "Input", items=[
         NodeItem("ShaderNodeTexCoord"),
         NodeItem("ShaderNodeAttribute"),

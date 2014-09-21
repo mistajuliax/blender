@@ -44,6 +44,7 @@ struct Material;
 struct Object;
 struct Lamp;
 struct Image;
+struct EnvMap;
 struct bNode;
 struct LinkNode;
 struct Scene;
@@ -74,6 +75,7 @@ typedef enum GPUType {
 	GPU_MAT4 = 16,
 	GPU_TEX2D = 1002,
 	GPU_SHADOW2D = 1003,
+	GPU_TEXCUBE = 1004,
 	GPU_ATTRIB = 3001
 } GPUType;
 
@@ -115,6 +117,7 @@ GPUNodeLink *GPU_attribute(int type, const char *name);
 GPUNodeLink *GPU_uniform(float *num);
 GPUNodeLink *GPU_dynamic_uniform(float *num, int dynamictype, void *data);
 GPUNodeLink *GPU_image(struct Image *ima, struct ImageUser *iuser, bool is_data);
+GPUNodeLink *GPU_envmap(struct EnvMap *envmap, struct ImageUser *iuser, bool is_data);
 GPUNodeLink *GPU_image_preview(struct PreviewImage *prv);
 GPUNodeLink *GPU_texture(int size, float *pixels);
 GPUNodeLink *GPU_dynamic_texture(struct GPUTexture *tex, int dynamictype, void *data);
@@ -188,11 +191,13 @@ typedef enum GPUDynamicType {
 	GPU_DYNAMIC_SAMPLER_2DBUFFER = 12,
 	GPU_DYNAMIC_SAMPLER_2DIMAGE = 13,
 	GPU_DYNAMIC_SAMPLER_2DSHADOW = 14,
+	GPU_DYNAMIC_SAMPLER_CUBE = 15,
 	GPU_DYNAMIC_LAMP_DISTANCE = 16,
 	GPU_DYNAMIC_LAMP_ATT1 = 17,
 	GPU_DYNAMIC_LAMP_ATT2 = 18,
 	GPU_DYNAMIC_LAMP_SPOTSIZE = 19,
 	GPU_DYNAMIC_LAMP_SPOTBLEND = 20,
+
 } GPUDynamicType;
 
 typedef enum GPUDataType {
@@ -215,6 +220,7 @@ typedef struct GPUInputUniform {
 	GPUDataType datatype;	/* type of uniform data */
 	struct Object *lamp;	/* when type=GPU_DYNAMIC_LAMP_... or GPU_DYNAMIC_SAMPLER_2DSHADOW */
 	struct Image *image;	/* when type=GPU_DYNAMIC_SAMPLER_2DIMAGE */
+	struct EnvMap *envmap;	/* when type=GPU_DYNAMIC_SAMPLER_CUBE */
 	int texnumber;			/* when type=GPU_DYNAMIC_SAMPLER, texture number: 0.. */
 	unsigned char *texpixels;	/* for internally generated texture, pixel data in RGBA format */
 	int texsize;			/* size in pixel of the texture in texpixels buffer: for 2D textures, this is S and T size (square texture) */

@@ -124,9 +124,20 @@ static int gpu_shader_texture(GPUMaterial *mat, bNode *node, bNodeExecData *UNUS
 {
 	Tex *tex = (Tex *)node->id;
 
-	if (tex && tex->type == TEX_IMAGE && tex->ima) {
-		GPUNodeLink *texlink = GPU_image(tex->ima, &tex->iuser, false);
-		int ret = GPU_stack_link(mat, "texture_image", in, out, texlink);
+	if (tex && (tex->type == TEX_IMAGE || tex->type == TEX_ENVMAP) && tex->ima) {
+		GPUNodeLink *texlink;
+		int ret = 0;
+
+		if (tex->type == TEX_IMAGE) {
+			texlink = GPU_image(tex->ima, &tex->iuser, false);
+			ret = GPU_stack_link(mat, "texture_image", in, out, texlink);
+		}
+		else if (tex->env->stype == ENV_LOAD) {
+			texlink = GPU_envmap(tex->env, &tex->iuser, false);
+			ret = GPU_stack_link(mat, "texture_envmap", in, out, texlink);
+		}
+		else
+			return 0;
 
 		if (ret) {
 			ImBuf *ibuf = BKE_image_acquire_ibuf(tex->ima, &tex->iuser, NULL);

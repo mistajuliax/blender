@@ -745,6 +745,14 @@ typedef struct NodeTexEnvironment {
 	int projection;
 } NodeTexEnvironment;
 
+typedef struct NodePbrShader {
+	NodeTexBase base;
+	ImageUser iuser;
+	struct ID *idMat;
+	int energy_conservation;
+	int pad;
+} NodePbrShader;
+
 typedef struct NodeTexGradient {
 	NodeTexBase base;
 	int gradient_type;
@@ -958,6 +966,12 @@ typedef struct NodeSunBeams {
 /* environment texture */
 #define SHD_PROJ_EQUIRECTANGULAR	0
 #define SHD_PROJ_MIRROR_BALL		1
+#define SHD_PROJ_CUBEMAP			2
+
+/* Pbr sampling */
+#define SHD_PBR_SAMPLE_32		0
+#define SHD_PBR_SAMPLE_64		1
+#define SHD_PBR_SAMPLE_PRECALC	2
 
 /* image texture */
 #define SHD_PROJ_FLAT				0

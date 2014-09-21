@@ -476,6 +476,9 @@ static void image_changed(Main *bmain, Image *ima)
 	/* icons */
 	BKE_icon_changed(BKE_icon_getid(&ima->id));
 
+	/* PBR Ibl tag to update */
+	ima->envmap_ok = 0;
+
 	/* textures */
 	for (tex = bmain->tex.first; tex; tex = tex->id.next)
 		if (tex->ima == ima)

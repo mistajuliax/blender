@@ -140,6 +140,7 @@ typedef struct GPUInput {
 	int textype;			/* datatype */
 
 	struct Image *ima;		/* image */
+	struct EnvMap *envmap;	/* envmap */
 	struct ImageUser *iuser;/* image user */
 	struct PreviewImage *prv;	/* preview images & icons */
 	int image_isdata;		/* image does not contain color data */

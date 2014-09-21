@@ -890,6 +890,29 @@ static void node_shader_buts_uvalongstroke(uiLayout *layout, bContext *UNUSED(C)
 	uiItemR(layout, ptr, "use_tips", 0, NULL, 0);
 }
 
+static void node_shader_buts_pbr_shader(uiLayout *layout, bContext *C, PointerRNA *ptr)
+{
+	uiLayout *row;
+	PointerRNA imaptr = RNA_pointer_get(ptr, "image");
+	PointerRNA iuserptr = RNA_pointer_get(ptr, "image_user");
+
+	uiTemplateID(layout, C, ptr, "material", "MATERIAL_OT_new", NULL, NULL);
+	uiLayoutSetContextPointer(layout, "image_user", &iuserptr);
+	uiTemplateID(layout, C, ptr, "image", NULL, "IMAGE_OT_open", NULL);
+	//uiItemR(layout, ptr, "color_space", 0, "", ICON_NONE);
+
+	if (imaptr.data) {
+		uiItemR(layout, &imaptr, "pbr_projection", 0, "", ICON_NONE);
+
+		row = uiLayoutRow(layout, true);
+		uiItemR(row, &imaptr, "envmap_sampling", 0, "", ICON_NONE);
+		if (RNA_enum_get(&imaptr, "envmap_sampling") == SHD_PBR_SAMPLE_PRECALC)
+			uiItemO(row, "", ICON_FILE_REFRESH, "node.prefilter_envmap");
+	}
+
+	uiItemR(layout, ptr, "energy_conservation", 0, NULL, ICON_NONE);	
+}
+
 static void node_shader_buts_normal_map(uiLayout *layout, bContext *C, PointerRNA *ptr)
 {
 	uiItemR(layout, ptr, "space", 0, "", 0);
@@ -1133,6 +1156,9 @@ static void node_shader_set_butfunc(bNodeType *ntype)
 			break;
 		case SH_NODE_OUTPUT_LINESTYLE:
 			ntype->draw_buttons = node_buts_output_linestyle;
+			break;
+		case SH_NODE_PBR_SHADER:
+			ntype->draw_buttons = node_shader_buts_pbr_shader;
 			break;
 	}
 }

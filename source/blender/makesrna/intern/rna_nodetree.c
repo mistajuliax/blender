@@ -658,6 +658,30 @@ static void rna_NodeTree_update(Main *bmain, Scene *UNUSED(scene), PointerRNA *p
 {
 	bNodeTree *ntree = (bNodeTree *)ptr->id.data;
 
+	/* when using border, make it so no old data from outside of
+	 * border is hanging around
+	 * ideally shouldn't be in RNA callback, but how to teach
+	 * compo to only clear frame when border usage is actually
+	 * toggling
+	 */
+	if (ntree->flag & NTREE_VIEWER_BORDER) {
+		Image *ima = BKE_image_verify_viewer(IMA_TYPE_COMPOSITE, "Viewer Node");
+		void *lock;
+		ImBuf *ibuf = BKE_image_acquire_ibuf(ima, NULL, &lock);
+
+		if (ibuf) {
+			if (ibuf->rect)
+				memset(ibuf->rect, 0, 4 * ibuf->x * ibuf->y);
+
+			if (ibuf->rect_float)
+				memset(ibuf->rect_float, 0, 4 * ibuf->x * ibuf->y * sizeof(float));
+
+			ibuf->userflags |= IB_DISPLAY_BUFFER_INVALID;
+		}
+
+		BKE_image_release_ibuf(ima, ibuf, lock);
+	}
+
 	WM_main_add_notifier(NC_NODE | NA_EDITED, NULL);
 	WM_main_add_notifier(NC_SCENE | ND_NODES, &ntree->id);
 
@@ -1086,6 +1110,11 @@ char *rna_Node_ImageUser_path(PointerRNA *ptr)
 	for (node = ntree->nodes.first; node; node = node->next) {
 		if (node->type == SH_NODE_TEX_ENVIRONMENT) {
 			NodeTexEnvironment *data = node->storage;
+			if (&data->iuser != ptr->data)
+				continue;
+		}
+		else if (node->type == SH_NODE_PBR_SHADER) {
+			NodePbrShader *data = node->storage;
 			if (&data->iuser != ptr->data)
 				continue;
 		}
@@ -3402,6 +3431,41 @@ static void def_sh_tex_environment(StructRNA *srna)
 	prop = RNA_def_property(srna, "image_user", PROP_POINTER, PROP_NONE);
 	RNA_def_property_flag(prop, PROP_NEVER_NULL);
 	RNA_def_property_pointer_sdna(prop, NULL, "iuser");
+	RNA_def_property_ui_text(prop, "Image User",
+	                         "Parameters defining which layer, pass and frame of the image is displayed");
+	RNA_def_property_update(prop, 0, "rna_Node_update");
+}
+
+static void def_sh_pbr_shader(StructRNA *srna)
+{
+	PropertyRNA *prop;
+
+	prop = RNA_def_property(srna, "image", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "id");
+	RNA_def_property_struct_type(prop, "Image");
+	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_ui_text(prop, "Image", "");
+	RNA_def_property_update(prop, NC_NODE | NA_EDITED, "rna_Node_tex_image_update");
+
+	RNA_def_struct_sdna_from(srna, "NodePbrShader", "storage");
+
+	prop = RNA_def_property(srna, "material", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "idMat");
+	RNA_def_property_struct_type(prop, "Material");
+	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_ui_text(prop, "Material", "");
+	RNA_def_property_update(prop, NC_NODE | NA_EDITED, "rna_Node_material_update");
+
+	def_sh_tex(srna);
+
+	prop = RNA_def_property(srna, "energy_conservation", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "energy_conservation", 1);
+	RNA_def_property_ui_text(prop, "Energy Conservation", "The result of the outcoming light is never higher than the light received by the object");
+	RNA_def_property_update(prop, NC_NODE | NA_EDITED, "rna_Node_update");
+
+	prop = RNA_def_property(srna, "image_user", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "iuser");
+	RNA_def_property_flag(prop, PROP_NEVER_NULL);
 	RNA_def_property_ui_text(prop, "Image User",
 	                         "Parameters defining which layer, pass and frame of the image is displayed");
 	RNA_def_property_update(prop, 0, "rna_Node_update");

@@ -128,7 +128,8 @@ void GPU_update_images_framechange(void);
 int GPU_update_image_time(struct Image *ima, double time);
 int GPU_verify_image(struct Image *ima, struct ImageUser *iuser, int tftile, bool compare, bool mipmap, bool is_data);
 void GPU_create_gl_tex(unsigned int *bind, unsigned int *pix, float *frect, int rectw, int recth,
-                       bool mipmap, bool use_hight_bit_depth, struct Image *ima);
+                       bool mipmap, bool use_hight_bit_depth, bool do_color_management, struct Image *ima, struct ImBuf *ibuf);
+int GPU_create_gl_cube(struct EnvMap *envmap, bool mipmap, bool do_color_management, struct ImageUser *iuser);
 void GPU_create_gl_tex_compressed(unsigned int *bind, unsigned int *pix, int x, int y, int mipmap, struct Image *ima, struct ImBuf *ibuf);
 bool GPU_upload_dxt_texture(struct ImBuf *ibuf);
 void GPU_free_image(struct Image *ima);

@@ -138,6 +138,9 @@ typedef struct ImBuf {
 
 	/* information for compressed textures */
 	struct DDSData dds_data;
+
+	/* PBR cubemap */
+	struct ImBuf *cubemap_ibuf; /* cubemap representation of that Ibuf */
 } ImBuf;
 
 /* Moved from BKE_bmfont_types.h because it is a userflag bit mask. */

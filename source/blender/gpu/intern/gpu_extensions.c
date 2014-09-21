@@ -36,6 +36,7 @@
 #include "GL/glew.h"
 
 #include "DNA_image_types.h"
+#include "DNA_texture_types.h"
 
 #include "MEM_guardedalloc.h"
 
@@ -607,6 +608,56 @@ GPUTexture *GPU_texture_from_blender(Image *ima, ImageUser *iuser, bool is_data,
 	return tex;
 }
 
+GPUTexture *GPU_texture_from_envmap(EnvMap *env, ImageUser *iuser, bool is_data, double time, int mipmap)
+{
+	GPUTexture *tex = env->gputexture;
+	GLint w, h, border, lastbindcode, bindcode = 0;
+	Image *ima = env->ima;
+
+	glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP, &lastbindcode);
+
+	GPU_update_image_time(ima, time);
+
+	if (tex)
+		bindcode = tex->bindcode;
+
+	/* this binds a texture, so that's why to restore it with lastbindcode */
+	if (bindcode == 0) {
+		bindcode = GPU_create_gl_cube(env, mipmap, is_data, iuser);
+	}
+	if (tex) {
+		tex->bindcode = bindcode;
+		glBindTexture(GL_TEXTURE_CUBE_MAP, lastbindcode);
+		return tex;
+	}
+
+	tex = MEM_callocN(sizeof(GPUTexture), "GPUTexture");
+	tex->bindcode = bindcode;
+	tex->number = -1;
+	tex->refcount = 1;
+	tex->target = GL_TEXTURE_CUBE_MAP;
+	tex->fromblender = 1;
+
+	env->gputexture= tex;
+
+	if (!glIsTexture(tex->bindcode)) {
+		GPU_print_error("Blender Texture Not Loaded");
+	}
+	else {
+		glBindTexture(GL_TEXTURE_CUBE_MAP, tex->bindcode);
+		glGetTexLevelParameteriv(GL_TEXTURE_CUBE_MAP, 0, GL_TEXTURE_WIDTH, &w);
+		glGetTexLevelParameteriv(GL_TEXTURE_CUBE_MAP, 0, GL_TEXTURE_HEIGHT, &h);
+		glGetTexLevelParameteriv(GL_TEXTURE_CUBE_MAP, 0, GL_TEXTURE_BORDER, &border);
+
+		tex->w = w - border;
+		tex->h = h - border;
+	}
+
+	glBindTexture(GL_TEXTURE_CUBE_MAP, lastbindcode);
+
+	return tex;
+}
+
 GPUTexture *GPU_texture_from_preview(PreviewImage *prv, int mipmap)
 {
 	GPUTexture *tex = prv->gputexture[0];
@@ -620,7 +671,7 @@ GPUTexture *GPU_texture_from_preview(PreviewImage *prv, int mipmap)
 	
 	/* this binds a texture, so that's why to restore it */
 	if (bindcode == 0) {
-		GPU_create_gl_tex(&bindcode, prv->rect[0], NULL, prv->w[0], prv->h[0], mipmap, 0, NULL);
+		GPU_create_gl_tex(&bindcode, prv->rect[0], NULL, prv->w[0], prv->h[0], mipmap, 0, 0, NULL, NULL);
 	}
 	if (tex) {
 		tex->bindcode = bindcode;
