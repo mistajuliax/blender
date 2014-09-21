@@ -2322,13 +2322,13 @@ void node_tex_coord(vec3 I, vec3 N, mat4 viewinvmat, mat4 obinvmat,
 	out vec3 generated, out vec3 normal, out vec3 uv, out vec3 object,
 	out vec3 camera, out vec3 window, out vec3 reflection)
 {
-	generated = mtex_2d_mapping(attr_orco);
+	generated = attr_orco*0.5 + vec3(0.5);
 	normal = normalize((obinvmat*(viewinvmat*vec4(N, 0.0))).xyz);
 	uv = attr_uv;
 	object = (obinvmat*(viewinvmat*vec4(I, 1.0))).xyz;
-	camera = I;
+	camera = I*vec3(1.0, 1.0, -1.0);
 	vec4 projvec = gl_ProjectionMatrix * vec4(I, 1.0);
-	window = mtex_2d_mapping(projvec.xyz/projvec.w);
+	window = mtex_2d_mapping(projvec.xyz/projvec.w)*vec3(1.0, 1.0, -1.0);
 
 	vec3 shade_I;
 	shade_view(I, shade_I);
@@ -2367,7 +2367,7 @@ void node_tex_environment(vec3 co, sampler2D ima, out vec4 color)
 	float u = (atan(co.y, co.x) + M_PI)/(2.0*M_PI);
 	float v = atan(co.z, hypot(co.x, co.y))/M_PI + 0.5;
 
-	color = texture2D(ima, vec2(u, v));
+	color = texture2D(ima, vec2(-u, v));
 }
 
 void node_tex_environment_empty(vec3 co, out vec4 color)
@@ -2478,6 +2478,7 @@ void node_normal_map_object(float strength, vec4 color, vec3 N, vec4 T, mat4 vie
 {
 	color = ( color - vec4(0.5))*vec4(2.0);
 	vec3 No = color.xyz * vec3(1.0, -1.0, 1.0);
+	N = normalize((obinvmat*(viewinvmat*vec4(N, 0.0))).xyz);
 	result = normalize(N + (No - N) * max(strength, 0.0));
 	result = normalize((obmat*vec4(result,0.0)).xyz);
 }
@@ -2486,14 +2487,15 @@ void node_normal_map_world(float strength, vec4 color, vec3 N, vec4 T, mat4 view
 {
 	color = ( color - vec4(0.5))*vec4(2.0);
 	vec3 No = color.xyz * vec3(1.0, -1.0, 1.0);
+	N = normalize((viewinvmat*vec4(N, 0.0)).xyz);
 	result = normalize(N + (No - N) * max(strength, 0.0));
-	result = normalize(result);
 }
 
 void node_normal_map_blend_object(float strength, vec4 color, vec3 N, vec4 T, mat4 viewmat, mat4 obmat, mat4 viewinvmat, mat4 obinvmat, out vec3 result)
 {
 	color = ( color - vec4(0.5))*vec4(2.0);
 	vec3 No = color.xzy * vec3(1.0, -1.0, 1.0);
+	N = normalize((obinvmat*(viewinvmat*vec4(N, 0.0))).xyz);
 	result = normalize(N + (No - N) * max(strength, 0.0));
 	result = normalize((obmat*vec4(result,0.0)).xyz);
 }
@@ -2502,8 +2504,8 @@ void node_normal_map_blend_world(float strength, vec4 color, vec3 N, vec4 T, mat
 {
 	color = ( color - vec4(0.5))*vec4(2.0);
 	vec3 No = color.xzy * vec3(1.0, -1.0, 1.0);
+	N = normalize((viewinvmat*vec4(N, 0.0)).xyz);
 	result = normalize(N + (No - N) * max(strength, 0.0));
-	result = normalize(result);
 }
 
 void node_bump(float strength, float dist, float height, vec3 N, out vec3 result)
