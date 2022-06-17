@@ -65,7 +65,7 @@ class RenderButtonsPanel():
     bl_context = "render"
 
     @classmethod
-    def poll(self, context):
+    def poll(cls, context):
         rd = context.scene.render
         return rd.engine == 'CYCLES'
 
@@ -75,9 +75,9 @@ class PHYSICS_PT_fluid_export(RenderButtonsPanel, bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        
+
         cycles = context.scene.cycles_xml
-        
+
         #layout.prop(cycles, "filepath")
         layout.operator("export_mesh.cycles_xml")
 
@@ -111,20 +111,17 @@ class ExportCyclesXML(bpy.types.Operator, ExportHelper):
         # generate mesh node
         nverts = ""
         verts = ""
-        P = ""
+        P = "".join("%f %f %f  " % (v.co[0], v.co[1], v.co[2]) for v in mesh.vertices)
 
-        for v in mesh.vertices:
-            P += "%f %f %f  " % (v.co[0], v.co[1], v.co[2])
-
-        for i, f in enumerate(mesh.tessfaces):
-            nverts += str(len(f.vertices)) + " "
+        for f in mesh.tessfaces:
+            nverts += f"{len(f.vertices)} "
 
             for v in f.vertices:
-                verts += str(v) + " "
+                verts += f"{str(v)} "
             verts += " "
 
         node = etree.Element('mesh', attrib={'nverts': nverts, 'verts': verts, 'P': P})
-        
+
         # write to file
         write(node, filepath)
 

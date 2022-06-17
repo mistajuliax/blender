@@ -92,13 +92,13 @@ def draw_samples_info(layout, cscene):
         col.label("Total Samples:")
         col.separator()
         if integrator == 'PATH':
-            col.label("%s AA" % aa)
+            col.label(f"{aa} AA")
         else:
-            col.label("%s AA, %s Diffuse, %s Glossy, %s Transmission" %
-                      (aa, d * aa, g * aa, t * aa))
+            col.label(f"{aa} AA, {d * aa} Diffuse, {g * aa} Glossy, {t * aa} Transmission")
             col.separator()
-            col.label("%s AO, %s Mesh Light, %s Subsurface, %s Volume" %
-                      (ao * aa, ml * aa, sss * aa, vol * aa))
+            col.label(
+                f"{ao * aa} AO, {ml * aa} Mesh Light, {sss * aa} Subsurface, {vol * aa} Volume"
+            )
 
 
 class CyclesRender_PT_sampling(CyclesButtonsPanel, Panel):
@@ -527,21 +527,19 @@ class Cycles_PT_mesh_displacement(CyclesButtonsPanel, Panel):
 
     @classmethod
     def poll(cls, context):
-        if CyclesButtonsPanel.poll(context):
-            if context.mesh or context.curve or context.meta_ball:
-                if context.scene.cycles.feature_set == 'EXPERIMENTAL':
-                    return True
-
-        return False
+        return bool(
+            CyclesButtonsPanel.poll(context)
+            and (context.mesh or context.curve or context.meta_ball)
+            and context.scene.cycles.feature_set == 'EXPERIMENTAL'
+        )
 
     def draw(self, context):
         layout = self.layout
 
-        mesh = context.mesh
         curve = context.curve
         mball = context.meta_ball
 
-        if mesh:
+        if mesh := context.mesh:
             cdata = mesh.cycles
         elif curve:
             cdata = curve.cycles
@@ -561,7 +559,11 @@ class CyclesObject_PT_motion_blur(CyclesButtonsPanel, Panel):
     @classmethod
     def poll(cls, context):
         ob = context.object
-        return CyclesButtonsPanel.poll(context) and ob and ob.type in {'MESH', 'CURVE', 'CURVE', 'SURFACE', 'FONT', 'META'}
+        return (
+            CyclesButtonsPanel.poll(context)
+            and ob
+            and ob.type in {'MESH', 'CURVE', 'SURFACE', 'FONT', 'META'}
+        )
 
     def draw_header(self, context):
         layout = self.layout
@@ -658,11 +660,7 @@ def find_node(material, nodetype):
 
 
 def find_node_input(node, name):
-    for input in node.inputs:
-        if input.name == name:
-            return input
-
-    return None
+    return next((input for input in node.inputs if input.name == name), None)
 
 
 def panel_node_draw(layout, id_data, output_type, input_name):
@@ -672,13 +670,12 @@ def panel_node_draw(layout, id_data, output_type, input_name):
 
     ntree = id_data.node_tree
 
-    node = find_node(id_data, output_type)
-    if not node:
-        layout.label(text="No output node")
-    else:
+    if node := find_node(id_data, output_type):
         input = find_node_input(node, input_name)
         layout.template_node_view(ntree, node, input)
 
+    else:
+        layout.label(text="No output node")
     return True
 
 
@@ -858,11 +855,10 @@ class CyclesWorld_PT_mist(CyclesButtonsPanel, Panel):
 
     @classmethod
     def poll(cls, context):
-        if CyclesButtonsPanel.poll(context):
-            if context.world:
-                for rl in context.scene.render.layers:
-                    if rl.use_pass_mist:
-                        return True
+        if CyclesButtonsPanel.poll(context) and context.world:
+            for rl in context.scene.render.layers:
+                if rl.use_pass_mist:
+                    return True
 
         return False
 
@@ -1228,7 +1224,10 @@ class CyclesRender_PT_CurveRendering(CyclesButtonsPanel, Panel):
         layout.prop(ccscene, "primitive", text="Primitive")
         layout.prop(ccscene, "shape", text="Shape")
 
-        if not (ccscene.primitive in {'CURVE_SEGMENTS', 'LINE_SEGMENTS'} and ccscene.shape == 'RIBBONS'):
+        if (
+            ccscene.primitive not in {'CURVE_SEGMENTS', 'LINE_SEGMENTS'}
+            or ccscene.shape != 'RIBBONS'
+        ):
             layout.prop(ccscene, "cull_backfacing", text="Cull back-faces")
 
         if ccscene.primitive == 'TRIANGLES' and ccscene.shape == 'THICK':

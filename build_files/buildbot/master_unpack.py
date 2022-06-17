@@ -31,10 +31,7 @@ import zipfile
 def strip_extension(filename):
     extensions = '.zip', '.tar', '.bz2', '.gz', '.tgz', '.tbz', '.exe'
     filename_noext, ext = os.path.splitext(filename)
-    if ext in extensions:
-        return strip_extension(filename_noext)  # may have .tar.bz2
-    else:
-        return filename
+    return strip_extension(filename_noext) if ext in extensions else filename
 
 
 # extract platform from package name
@@ -71,11 +68,7 @@ def get_branch(filename):
     branch = ""
 
     for token in tokens:
-        if branch == "":
-            branch = token
-        else:
-            branch = branch + "-" + token
-
+        branch = token if branch == "" else f"{branch}-{token}"
         if token == "blender":
             return branch
 

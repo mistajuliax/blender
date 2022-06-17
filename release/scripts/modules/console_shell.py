@@ -33,11 +33,7 @@ def shell_run(text):
     import subprocess
     val, output = subprocess.getstatusoutput(text)
 
-    if not val:
-        style = 'OUTPUT'
-    else:
-        style = 'ERROR'
-
+    style = 'ERROR' if val else 'OUTPUT'
     add_scrollback(output, style)
 
 PROMPT = "$ "

@@ -69,40 +69,38 @@ def modules_refresh(module_cache=addons_fake_modules):
             print("fake_module", mod_path, mod_name)
         import ast
         ModuleType = type(ast)
-        file_mod = open(mod_path, "r", encoding='UTF-8')
-        if speedy:
-            lines = []
-            line_iter = iter(file_mod)
-            l = ""
-            while not l.startswith("bl_info"):
-                try:
-                    l = line_iter.readline()
-                except UnicodeDecodeError as e:
-                    if not error_encoding:
-                        error_encoding = True
-                        print("Error reading file as UTF-8:", mod_path, e)
-                    file_mod.close()
-                    return None
+        with open(mod_path, "r", encoding='UTF-8') as file_mod:
+            if speedy:
+                lines = []
+                line_iter = iter(file_mod)
+                l = ""
+                while not l.startswith("bl_info"):
+                    try:
+                        l = line_iter.readline()
+                    except UnicodeDecodeError as e:
+                        if not error_encoding:
+                            error_encoding = True
+                            print("Error reading file as UTF-8:", mod_path, e)
+                        file_mod.close()
+                        return None
 
-                if len(l) == 0:
-                    break
-            while l.rstrip():
-                lines.append(l)
-                try:
-                    l = line_iter.readline()
-                except UnicodeDecodeError as e:
-                    if not error_encoding:
-                        error_encoding = True
-                        print("Error reading file as UTF-8:", mod_path, e)
-                    file_mod.close()
-                    return None
+                    if len(l) == 0:
+                        break
+                while l.rstrip():
+                    lines.append(l)
+                    try:
+                        l = line_iter.readline()
+                    except UnicodeDecodeError as e:
+                        if not error_encoding:
+                            error_encoding = True
+                            print("Error reading file as UTF-8:", mod_path, e)
+                        file_mod.close()
+                        return None
 
-            data = "".join(lines)
+                data = "".join(lines)
 
-        else:
-            data = file_mod.read()
-
-        file_mod.close()
+            else:
+                data = file_mod.read()
 
         try:
             ast_data = ast.parse(data, filename=mod_path)
@@ -116,11 +114,13 @@ def modules_refresh(module_cache=addons_fake_modules):
 
         if ast_data:
             for body in ast_data.body:
-                if body.__class__ == ast.Assign:
-                    if len(body.targets) == 1:
-                        if getattr(body.targets[0], "id", "") == "bl_info":
-                            body_info = body
-                            break
+                if (
+                    body.__class__ == ast.Assign
+                    and len(body.targets) == 1
+                    and getattr(body.targets[0], "id", "") == "bl_info"
+                ):
+                    body_info = body
+                    break
 
         if body_info:
             try:
@@ -129,7 +129,7 @@ def modules_refresh(module_cache=addons_fake_modules):
                 mod.__file__ = mod_path
                 mod.__time__ = os.path.getmtime(mod_path)
             except:
-                print("AST error parsing bl_info for %s" % mod_name)
+                print(f"AST error parsing bl_info for {mod_name}")
                 import traceback
                 traceback.print_exc()
                 raise
@@ -239,8 +239,7 @@ def _addon_remove(module_name):
     addons = _user_preferences.addons
 
     while module_name in addons:
-        addon = addons.get(module_name)
-        if addon:
+        if addon := addons.get(module_name):
             addons.remove(addon)
 
 
@@ -389,8 +388,7 @@ def reset_all(reload_scripts=False):
             # first check if reload is needed before changing state.
             if reload_scripts:
                 import imp
-                mod = sys.modules.get(mod_name)
-                if mod:
+                if mod := sys.modules.get(mod_name):
                     imp.reload(mod)
 
             if is_enabled == is_loaded:

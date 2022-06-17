@@ -346,7 +346,7 @@ WARN_MSGID_NOT_CAPITALIZED_ALLOWED = {
     "verts only",
     "virtual parents",
 }
-WARN_MSGID_NOT_CAPITALIZED_ALLOWED |= set(lng[2] for lng in LANGUAGES)
+WARN_MSGID_NOT_CAPITALIZED_ALLOWED |= {lng[2] for lng in LANGUAGES}
 
 WARN_MSGID_END_POINT_ALLOWED = {
     "Numpad .",
@@ -379,9 +379,8 @@ PYTHON3_EXEC = "python3"
 # This is just an example, you’ll have to edit it in your user_settings.py!
 BLENDER_EXEC = os.path.abspath(os.path.join("foo", "bar", "blender"))
 # check for blender.bin
-if not os.path.exists(BLENDER_EXEC):
-    if os.path.exists(BLENDER_EXEC + ".bin"):
-        BLENDER_EXEC = BLENDER_EXEC + ".bin"
+if not os.path.exists(BLENDER_EXEC) and os.path.exists(f"{BLENDER_EXEC}.bin"):
+    BLENDER_EXEC = f"{BLENDER_EXEC}.bin"
 
 # The gettext msgfmt "compiler". You’ll likely have to edit it in your user_settings.py if you’re under Windows.
 GETTEXT_MSGFMT_EXECUTABLE = "msgfmt"
@@ -417,7 +416,7 @@ REL_TRUNK_MO_DIR = os.path.join(REL_TRUNK_DIR, "locale")
 REL_POTFILES_SOURCE_DIR = os.path.join("source")
 
 # The template messages file (relative to I18N_DIR).
-REL_FILE_NAME_POT = os.path.join(REL_BRANCHES_DIR, DOMAIN + ".pot")
+REL_FILE_NAME_POT = os.path.join(REL_BRANCHES_DIR, f"{DOMAIN}.pot")
 
 # Mo root datapath.
 REL_MO_PATH_ROOT = os.path.join(REL_TRUNK_DIR, "locale")
@@ -430,7 +429,7 @@ MO_PATH_ROOT_RELATIVE = os.path.join("locale")
 MO_PATH_TEMPLATE_RELATIVE = os.path.join(MO_PATH_ROOT_RELATIVE, "{}", "LC_MESSAGES")
 
 # Mo file name.
-MO_FILE_NAME = DOMAIN + ".mo"
+MO_FILE_NAME = f"{DOMAIN}.mo"
 
 # Where to search for py files that may contain ui strings (relative to one of the 'resource_path' of Blender).
 CUSTOM_PY_UI_FILES = [

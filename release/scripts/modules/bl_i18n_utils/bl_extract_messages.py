@@ -46,7 +46,7 @@ def init_spell_check(settings, lang="en_US"):
         from bl_i18n_utils import utils_spell_check
         return utils_spell_check.SpellChecker(settings, lang)
     except Exception as e:
-        print("Failed to import utils_spell_check ({})".format(str(e)))
+        print(f"Failed to import utils_spell_check ({str(e)})")
         return None
 
 
@@ -104,29 +104,28 @@ def check(check_ctxt, msgs, key, msgsrc, settings):
     spell_checker = check_ctxt.get("spell_checker")
     spell_errors = check_ctxt.get("spell_errors")
 
-    if multi_rnatip is not None:
-        if key in msgs and key not in multi_rnatip:
-            multi_rnatip.add(key)
-    if multi_lines is not None:
-        if '\n' in key[1]:
-            multi_lines.add(key)
-    if py_in_rna is not None:
-        if key in py_in_rna[1]:
-            py_in_rna[0].add(key)
-    if not_capitalized is not None:
-        if(key[1] not in settings.WARN_MSGID_NOT_CAPITALIZED_ALLOWED and
-           key[1][0].isalpha() and not key[1][0].isupper()):
-            not_capitalized.add(key)
-    if end_point is not None:
-        if (key[1].strip().endswith('.') and not key[1].strip().endswith('...') and
-            key[1] not in settings.WARN_MSGID_END_POINT_ALLOWED):
-            end_point.add(key)
-    if undoc_ops is not None:
-        if key[1] == settings.UNDOC_OPS_STR:
-            undoc_ops.add(key)
+    if multi_rnatip is not None and key in msgs and key not in multi_rnatip:
+        multi_rnatip.add(key)
+    if multi_lines is not None and '\n' in key[1]:
+        multi_lines.add(key)
+    if py_in_rna is not None and key in py_in_rna[1]:
+        py_in_rna[0].add(key)
+    if not_capitalized is not None and (
+        key[1] not in settings.WARN_MSGID_NOT_CAPITALIZED_ALLOWED
+        and key[1][0].isalpha()
+        and not key[1][0].isupper()
+    ):
+        not_capitalized.add(key)
+    if end_point is not None and (
+        key[1].strip().endswith('.')
+        and not key[1].strip().endswith('...')
+        and key[1] not in settings.WARN_MSGID_END_POINT_ALLOWED
+    ):
+        end_point.add(key)
+    if undoc_ops is not None and key[1] == settings.UNDOC_OPS_STR:
+        undoc_ops.add(key)
     if spell_checker is not None and spell_errors is not None:
-        err = spell_checker.check(key[1])
-        if err:
+        if err := spell_checker.check(key[1]):
             spell_errors[key] = err
 
 
@@ -223,7 +222,7 @@ def dump_rna_messages(msgs, reports, settings, verbose=False):
         }
 
         # More builtin classes we don't need to parse.
-        blacklist_rna_class |= {cls for cls in bpy.types.Property.__subclasses__()}
+        blacklist_rna_class |= set(bpy.types.Property.__subclasses__())
 
         _rna = {getattr(bpy.types, cls) for cls in dir(bpy.types)}
 
@@ -258,22 +257,6 @@ def dump_rna_messages(msgs, reports, settings, verbose=False):
                                                bpy.types.UIList.__subclasses__()
                                     if cls.__name__ not in _rna_clss_ids}        
 
-        # Collect internal operators
-        # extend with all internal operators
-        # note that this uses internal api introspection functions
-        # XXX Do not skip INTERNAL's anymore, some of those ops show up in UI now!
-        # all possible operator names
-        #op_ids = (set(cls.bl_rna.identifier for cls in bpy.types.OperatorProperties.__subclasses__()) |
-                  #set(cls.bl_rna.identifier for cls in bpy.types.Operator.__subclasses__()) | 
-                  #set(cls.bl_rna.identifier for cls in bpy.types.OperatorMacro.__subclasses__()))
-
-        #get_instance = __import__("_bpy").ops.get_instance
-        #path_resolve = type(bpy.context).__base__.path_resolve
-        #for idname in op_ids:
-            #op = get_instance(idname)
-            #if 'INTERNAL' in path_resolve(op, "bl_options"):
-                #blacklist_rna_class.add(idname)
-
         return blacklist_rna_class
 
     check_ctxt_rna = check_ctxt_rna_tip = None
@@ -295,9 +278,7 @@ def dump_rna_messages(msgs, reports, settings, verbose=False):
     # Function definitions
     def walk_properties(cls):
         bl_rna = cls.bl_rna
-        # Get our parents' properties, to not export them multiple times.
-        bl_rna_base = bl_rna.base
-        if bl_rna_base:
+        if bl_rna_base := bl_rna.base:
             bl_rna_base_props = set(bl_rna_base.properties.values())
         else:
             bl_rna_base_props = set()
@@ -310,7 +291,7 @@ def dump_rna_messages(msgs, reports, settings, verbose=False):
                 continue
             reports["rna_props"].append((cls, prop))
 
-            msgsrc = "bpy.types.{}.{}".format(bl_rna.identifier, prop.identifier)
+            msgsrc = f"bpy.types.{bl_rna.identifier}.{prop.identifier}"
             msgctxt = prop.translation_context or default_context
 
             if prop.name and (prop.name != prop.identifier or msgctxt != default_context):
@@ -320,7 +301,7 @@ def dump_rna_messages(msgs, reports, settings, verbose=False):
 
             if isinstance(prop, bpy.types.EnumProperty):
                 for item in prop.enum_items:
-                    msgsrc = "bpy.types.{}.{}:'{}'".format(bl_rna.identifier, prop.identifier, item.identifier)
+                    msgsrc = f"bpy.types.{bl_rna.identifier}.{prop.identifier}:'{item.identifier}'"
                     if item.name and item.name != item.identifier:
                         process_msg(msgs, msgctxt, item.name, msgsrc, reports, check_ctxt_rna, settings)
                     if item.description:
@@ -331,7 +312,7 @@ def dump_rna_messages(msgs, reports, settings, verbose=False):
 
     def walk_class(cls):
         bl_rna = cls.bl_rna
-        msgsrc = "bpy.types." + bl_rna.identifier
+        msgsrc = f"bpy.types.{bl_rna.identifier}"
         msgctxt = bl_rna.translation_context or default_context
 
         if bl_rna.name and (bl_rna.name != bl_rna.identifier or msgctxt != default_context):
@@ -354,7 +335,7 @@ def dump_rna_messages(msgs, reports, settings, verbose=False):
     def walk_keymap_hierarchy(hier, msgsrc_prev):
         km_i18n_context = bpy.app.translations.contexts.id_windowmanager
         for lvl in hier:
-            msgsrc = msgsrc_prev + "." + lvl[1]
+            msgsrc = f"{msgsrc_prev}.{lvl[1]}"
             process_msg(msgs, km_i18n_context, lvl[0], msgsrc, reports, None, settings)
             if lvl[3]:
                 walk_keymap_hierarchy(lvl[3], msgsrc)
@@ -373,7 +354,7 @@ def dump_rna_messages(msgs, reports, settings, verbose=False):
             cls_id = ""
             bl_rna = cls.bl_rna
             while bl_rna:
-                cls_id = bl_rna.identifier + "." + cls_id
+                cls_id = f"{bl_rna.identifier}.{cls_id}"
                 bl_rna = bl_rna.base
             return cls_id
         if verbose:
@@ -431,8 +412,7 @@ def dump_py_messages_from_files(msgs, reports, files, settings):
         evaluate to a string. However, break on some kind of stopper nodes, like e.g. Subscript.
         """
         if type(node) == ast.Str:
-            eval_str = ast.literal_eval(node)
-            if eval_str:
+            if eval_str := ast.literal_eval(node):
                 yield (is_split, eval_str, (node,))
         else:
             is_split = (type(node) in separate_nodes)
@@ -449,8 +429,7 @@ def dump_py_messages_from_files(msgs, reports, files, settings):
         for is_split, estr, nds in extract_strings_ex(node):
             estr_ls.append(estr)
             nds_ls.extend(nds)
-        ret = _extract_string_merge(estr_ls, nds_ls)
-        return ret
+        return _extract_string_merge(estr_ls, nds_ls)
 
     def extract_strings_split(node):
         """
@@ -476,18 +455,15 @@ def dump_py_messages_from_files(msgs, reports, files, settings):
 
     i18n_ctxt_ids = {v for v in bpy.app.translations.contexts_C_to_py.values()}
     def _ctxt_to_ctxt(node):
-        # We must try, to some extend, to get contexts from vars instead of only literal strings...
-        ctxt = extract_strings(node)[0]
-        if ctxt:
+        if ctxt := extract_strings(node)[0]:
             return ctxt
         # Basically, we search for attributes matching py context names, for now.
         # So non-literal contexts should be used that way:
         #     i18n_ctxt = bpy.app.translations.contexts
         #     foobar(text="Foo", text_ctxt=i18n_ctxt.id_object)
-        if type(node) == ast.Attribute:
-            if node.attr in i18n_ctxt_ids:
-                #print(node, node.attr, getattr(i18n_contexts, node.attr))
-                return getattr(i18n_contexts, node.attr)
+        if type(node) == ast.Attribute and node.attr in i18n_ctxt_ids:
+            #print(node, node.attr, getattr(i18n_contexts, node.attr))
+            return getattr(i18n_contexts, node.attr)
         return i18n_contexts.default
 
     def _op_to_ctxt(node):
@@ -501,8 +477,8 @@ def dump_py_messages_from_files(msgs, reports, files, settings):
             return op.get_rna().bl_rna.translation_context
         except Exception as e:
             default_op_context = i18n_contexts.operator_default
-            print("ERROR: ", str(e))
-            print("       Assuming default operator context '{}'".format(default_op_context))
+            print("ERROR: ", e)
+            print(f"       Assuming default operator context '{default_op_context}'")
             return default_op_context
 
     # Gather function names.
@@ -710,14 +686,14 @@ def dump_src_messages(msgs, reports, settings):
                 elif '"' in _msgctxt or "'" in _msgctxt:
                     msgctxt = clean_str(_msgctxt)
                 else:
-                    print("WARNING: raw context “{}” couldn’t be resolved!".format(_msgctxt))
+                    print(f"WARNING: raw context “{_msgctxt}” couldn’t be resolved!")
             # Message.
             msgid = ""
             if _msgid:
                 if '"' in _msgid or "'" in _msgid:
                     msgid = clean_str(_msgid)
                 else:
-                    print("WARNING: raw message “{}” couldn’t be resolved!".format(_msgid))
+                    print(f"WARNING: raw message “{_msgid}” couldn’t be resolved!")
             return msgctxt, msgid
 
         check_ctxt_src = None
@@ -794,10 +770,13 @@ def dump_src_messages(msgs, reports, settings):
 
 ##### Main functions! #####
 def dump_messages(do_messages, do_checks, settings):
-    bl_ver = "Blender " + bpy.app.version_string
+    bl_ver = f"Blender {bpy.app.version_string}"
     bl_hash = bpy.app.build_hash
-    bl_date = datetime.datetime.strptime(bpy.app.build_date.decode() + "T" + bpy.app.build_time.decode(),
-                                         "%Y-%m-%dT%H:%M:%S")
+    bl_date = datetime.datetime.strptime(
+        f"{bpy.app.build_date.decode()}T{bpy.app.build_time.decode()}",
+        "%Y-%m-%dT%H:%M:%S",
+    )
+
     pot = utils.I18nMessages.gen_empty_messages(settings.PARSER_TEMPLATE_ID, bl_ver, bl_hash, bl_date, bl_date.year,
                                                 settings=settings)
     msgs = pot.msgs
@@ -948,5 +927,5 @@ def main():
 
 
 if __name__ == "__main__":
-    print("\n\n *** Running {} *** \n".format(__file__))
+    print(f"\n\n *** Running {__file__} *** \n")
     main()

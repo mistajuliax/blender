@@ -34,10 +34,11 @@ def build_property_typemap(skip_classes, skip_typemap):
 
         ## to support skip-save we cant get all props
         # properties = cls.bl_rna.properties.keys()
-        properties = []
-        for prop_id, prop in cls.bl_rna.properties.items():
-            if not prop.is_skip_save:
-                properties.append(prop_id)
+        properties = [
+            prop_id
+            for prop_id, prop in cls.bl_rna.properties.items()
+            if not prop.is_skip_save
+        ]
 
         properties.remove("rna_type")
         property_typemap[attr] = properties
@@ -101,7 +102,7 @@ def rna2xml(fw=print_ln,
         elif val_type == bool:
             return "TRUE" if val else "FALSE"
         else:
-            raise NotImplemented("this type is not a number %s" % val_type)
+            raise NotImplemented(f"this type is not a number {val_type}")
 
     def rna2xml_node(ident, value, parent):
         ident_next = ident + ident_val
@@ -255,7 +256,7 @@ def xml2rna(root_xml,
             subvalue = getattr(value, attr, Ellipsis)
 
             if subvalue is Ellipsis:
-                print("%s.%s not found" % (type(value).__name__, attr))
+                print(f"{type(value).__name__}.{attr} not found")
             else:
                 value_xml = xml_node.attributes[attr].value
 
@@ -278,7 +279,6 @@ def xml2rna(root_xml,
                         # read hexidecimal value as float array
                         value_xml_split = value_xml[1:]
                         value_xml_coerce = [int(value_xml_split[i:i + 2], 16) / 255 for i in range(0, len(value_xml_split), 2)]
-                        del value_xml_split
                     else:
                         value_xml_split = value_xml.split()
                         try:
@@ -288,9 +288,8 @@ def xml2rna(root_xml,
                                 value_xml_coerce = [float(v) for v in value_xml_split]
                             except ValueError:  # bool vector property
                                 value_xml_coerce = [{'TRUE': True, 'FALSE': False}[v] for v in value_xml_split]
-                        del value_xml_split
+                    del value_xml_split
                     tp_name = 'ARRAY'
-
 #                print("  %s.%s (%s) --- %s" % (type(value).__name__, attr, tp_name, subvalue_type))
                 try:
                     setattr(value, attr, value_xml_coerce)
@@ -319,9 +318,7 @@ def xml2rna(root_xml,
 
                     if hasattr(subvalue, "__len__"):
                         # Collection
-                        if len(elems) != len(subvalue):
-                            print("Size Mismatch! collection:", child_xml.nodeName)
-                        else:
+                        if len(elems) == len(subvalue):
                             for i in range(len(elems)):
                                 child_xml_real = elems[i]
                                 subsubvalue = subvalue[i]
@@ -331,18 +328,14 @@ def xml2rna(root_xml,
                                 else:
                                     rna2xml_node(child_xml_real, subsubvalue)
 
-                    else:
-#                        print(elems)
-
-                        if len(elems) == 1:
-                            # sub node named by its type
-                            child_xml_real, = elems
-
-                            # print(child_xml_real, subvalue)
-                            rna2xml_node(child_xml_real, subvalue)
                         else:
-                            # empty is valid too
-                            pass
+                            print("Size Mismatch! collection:", child_xml.nodeName)
+                    elif len(elems) == 1:
+                        # sub node named by its type
+                        child_xml_real, = elems
+
+                        # print(child_xml_real, subvalue)
+                        rna2xml_node(child_xml_real, subvalue)
 
     rna2xml_node(root_xml, root_rna)
 
@@ -355,7 +348,7 @@ def xml2rna(root_xml,
 
 
 def _get_context_val(context, path):
-    path_full = "context." + path
+    path_full = f"context.{path}"
     try:
         value = eval(path_full)
     except:
@@ -390,21 +383,20 @@ def xml_file_run(context, filepath, rna_map):
 
 def xml_file_write(context, filepath, rna_map, skip_typemap=None):
 
-    file = open(filepath, "w", encoding="utf-8")
-    fw = file.write
+    with open(filepath, "w", encoding="utf-8") as file:
+        fw = file.write
 
-    fw("<bpy>\n")
+        fw("<bpy>\n")
 
-    for rna_path, xml_tag in rna_map:
-        # xml_tag is ignored, we get this from the rna
-        value = _get_context_val(context, rna_path)
-        rna2xml(fw,
-                root_rna=value,
-                method='ATTR',
-                root_ident="  ",
-                ident_val="  ",
-                skip_typemap=skip_typemap,
-                )
+        for rna_path, xml_tag in rna_map:
+            # xml_tag is ignored, we get this from the rna
+            value = _get_context_val(context, rna_path)
+            rna2xml(fw,
+                    root_rna=value,
+                    method='ATTR',
+                    root_ident="  ",
+                    ident_val="  ",
+                    skip_typemap=skip_typemap,
+                    )
 
-    fw("</bpy>\n")
-    file.close()
+        fw("</bpy>\n")

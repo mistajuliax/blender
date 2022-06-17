@@ -40,7 +40,7 @@ def read_blend_rend_chunk(path):
 
     head = blendfile.read(7)
 
-    if head[0:2] == b'\x1f\x8b':  # gzip magic
+    if head[:2] == b'\x1f\x8b':  # gzip magic
         import gzip
         blendfile.close()
         blendfile = gzip.open(path, "rb")

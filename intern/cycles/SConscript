@@ -41,31 +41,34 @@ sources.remove(path.join('kernel', 'kernel_sse41.cpp'))
 sources.remove(path.join('kernel', 'kernel_avx.cpp'))
 sources.remove(path.join('kernel', 'kernel_avx2.cpp'))
 
-incs = [] 
-defs = []
+incs = []
 cxxflags = Split(env['CXXFLAGS'])
 
-defs.append('GLEW_STATIC')
-
-defs.append('CCL_NAMESPACE_BEGIN=namespace ccl {')
-defs.append('CCL_NAMESPACE_END=}')
-
-defs.append('WITH_OPENCL')
-defs.append('WITH_MULTI')
-defs.append('WITH_CUDA')
+defs = [
+    'GLEW_STATIC',
+    'CCL_NAMESPACE_BEGIN=namespace ccl {',
+    'CCL_NAMESPACE_END=}',
+    'WITH_OPENCL',
+    'WITH_MULTI',
+    'WITH_CUDA',
+]
 
 if env['WITH_BF_CYCLES_OSL']:
-    defs.append('WITH_OSL')
-    defs.append('OSL_STATIC_LIBRARY')
+    defs.extend(('WITH_OSL', 'OSL_STATIC_LIBRARY'))
     incs.append(cycles['BF_OSL_INC'])
 
 incs.extend('. bvh render device kernel kernel/osl kernel/svm util subd'.split())
 incs.extend('#intern/guardedalloc #source/blender/makesrna #source/blender/makesdna #source/blender/blenlib'.split())
 incs.extend('#source/blender/blenloader ../../source/blender/makesrna/intern'.split())
 incs.extend('#extern/glew/include #extern/clew/include #extern/cuew/include #intern/mikktspace'.split())
-incs.append(cycles['BF_OIIO_INC'])
-incs.append(cycles['BF_BOOST_INC'])
-incs.append(cycles['BF_OPENEXR_INC'].split())
+incs.extend(
+    (
+        cycles['BF_OIIO_INC'],
+        cycles['BF_BOOST_INC'],
+        cycles['BF_OPENEXR_INC'].split(),
+    )
+)
+
 incs.extend(cycles['BF_PYTHON_INC'].split())
 
 if env['OURPLATFORM'] in ('win32-vc', 'win64-vc'):
@@ -110,24 +113,42 @@ else:
         kernel_flags['avx'] = kernel_flags['sse41'] + ' -mavx'
         kernel_flags['avx2'] = kernel_flags['avx'] + ' -mavx2 -mfma -mlzcnt -mbmi -mbmi2'
 
-for kernel_type in kernel_flags.keys():
-    defs.append('WITH_KERNEL_' + kernel_type.upper())
+defs.extend(
+    f'WITH_KERNEL_{kernel_type.upper()}' for kernel_type in kernel_flags
+)
 
-for kernel_type in kernel_flags.keys():
-    kernel_source = path.join('kernel', 'kernel_' + kernel_type + '.cpp')
+for kernel_type, value in kernel_flags.items():
+    kernel_source = path.join('kernel', f'kernel_{kernel_type}.cpp')
     kernel_cxxflags = Split(env['CXXFLAGS'])
-    kernel_cxxflags.append(kernel_flags[kernel_type].split())
+    kernel_cxxflags.append(value.split())
     kernel_defs = defs[:]
     kernel_env = cycles.Clone()
 
     if env['OURPLATFORM'] == 'darwin' and env['C_COMPILER_ID'] == 'gcc' and  env['CCVERSION'] >= '4.6':
         # use Apple assembler for avx , gnu-compilers do not support it ( gnu gcc-4.6 or higher case )
-        kernel_env.BlenderLib('bf_intern_cycles_' + kernel_type, [kernel_source], incs, kernel_defs,
-            libtype=['intern'], priority=[10], cxx_compileflags=kernel_cxxflags,
-            cc_compilerchange='/usr/bin/clang', cxx_compilerchange='/usr/bin/clang++')
+        kernel_env.BlenderLib(
+            f'bf_intern_cycles_{kernel_type}',
+            [kernel_source],
+            incs,
+            kernel_defs,
+            libtype=['intern'],
+            priority=[10],
+            cxx_compileflags=kernel_cxxflags,
+            cc_compilerchange='/usr/bin/clang',
+            cxx_compilerchange='/usr/bin/clang++',
+        )
+
     else:
-        kernel_env.BlenderLib('bf_intern_cycles_' + kernel_type, [kernel_source], incs, kernel_defs,
-            libtype=['intern'], priority=[10], cxx_compileflags=kernel_cxxflags)
+        kernel_env.BlenderLib(
+            f'bf_intern_cycles_{kernel_type}',
+            [kernel_source],
+            incs,
+            kernel_defs,
+            libtype=['intern'],
+            priority=[10],
+            cxx_compileflags=kernel_cxxflags,
+        )
+
 
 cycles.BlenderLib('bf_intern_cycles', sources, incs, defs, libtype=['intern'], priority=[0], cxx_compileflags=cxxflags)
 

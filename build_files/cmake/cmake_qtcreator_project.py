@@ -48,10 +48,7 @@ import sys
 
 
 def quote_define(define):
-    if " " in define.strip():
-        return '"%s"' % define
-    else:
-        return define
+    return '"%s"' % define if " " in define.strip() else define
 
 
 def create_qtc_project_main():
@@ -63,18 +60,30 @@ def create_qtc_project_main():
     if SIMPLE_PROJECTFILE:
         # --- qtcreator specific, simple format
         PROJECT_NAME = "Blender"
-        f = open(os.path.join(PROJECT_DIR, "%s.files" % PROJECT_NAME), 'w')
+        f = open(os.path.join(PROJECT_DIR, f"{PROJECT_NAME}.files"), 'w')
         f.write("\n".join(files_rel))
 
-        f = open(os.path.join(PROJECT_DIR, "%s.includes" % PROJECT_NAME), 'w')
-        f.write("\n".join(sorted(list(set(os.path.dirname(f)
-                          for f in files_rel if is_c_header(f))))))
+        f = open(os.path.join(PROJECT_DIR, f"{PROJECT_NAME}.includes"), 'w')
+        f.write(
+            "\n".join(
+                sorted(
+                    list(
+                        {
+                            os.path.dirname(f)
+                            for f in files_rel
+                            if is_c_header(f)
+                        }
+                    )
+                )
+            )
+        )
 
-        qtc_prj = os.path.join(PROJECT_DIR, "%s.creator" % PROJECT_NAME)
+
+        qtc_prj = os.path.join(PROJECT_DIR, f"{PROJECT_NAME}.creator")
         f = open(qtc_prj, 'w')
         f.write("[General]\n")
 
-        qtc_cfg = os.path.join(PROJECT_DIR, "%s.config" % PROJECT_NAME)
+        qtc_cfg = os.path.join(PROJECT_DIR, f"{PROJECT_NAME}.config")
         if not os.path.exists(qtc_cfg):
             f = open(qtc_cfg, 'w')
             f.write("// ADD PREDEFINED MACROS HERE!\n")
@@ -84,38 +93,44 @@ def create_qtc_project_main():
         if (includes, defines) == (None, None):
             return
 
-        # for some reason it doesnt give all internal includes
-        includes = list(set(includes) | set(os.path.dirname(f)
-                        for f in files_rel if is_c_header(f)))
-        includes.sort()
+        includes = sorted(
+            (
+                set(includes)
+                | {os.path.dirname(f) for f in files_rel if is_c_header(f)}
+            )
+        )
 
-        if 0:
-            PROJECT_NAME = "Blender"
-        else:
-            # be tricky, get the project name from CMake if we can!
-            PROJECT_NAME = project_name_get()
+        # be tricky, get the project name from CMake if we can!
+        PROJECT_NAME = project_name_get()
 
         FILE_NAME = PROJECT_NAME.lower()
-        f = open(os.path.join(PROJECT_DIR, "%s.files" % FILE_NAME), 'w')
+        f = open(os.path.join(PROJECT_DIR, f"{FILE_NAME}.files"), 'w')
         f.write("\n".join(files_rel))
 
-        f = open(os.path.join(PROJECT_DIR, "%s.includes" % FILE_NAME), 'w', encoding='utf-8')
+        f = open(
+            os.path.join(PROJECT_DIR, f"{FILE_NAME}.includes"),
+            'w',
+            encoding='utf-8',
+        )
+
         f.write("\n".join(sorted(includes)))
 
-        qtc_prj = os.path.join(PROJECT_DIR, "%s.creator" % FILE_NAME)
+        qtc_prj = os.path.join(PROJECT_DIR, f"{FILE_NAME}.creator")
         f = open(qtc_prj, 'w')
         f.write("[General]\n")
 
-        qtc_cfg = os.path.join(PROJECT_DIR, "%s.config" % FILE_NAME)
+        qtc_cfg = os.path.join(PROJECT_DIR, f"{FILE_NAME}.config")
         f = open(qtc_cfg, 'w')
         f.write("// ADD PREDEFINED MACROS TO %s_custom.config!\n" % FILE_NAME)
-        qtc_custom_cfg = os.path.join(PROJECT_DIR, "%s_custom.config" % FILE_NAME)
+        qtc_custom_cfg = os.path.join(PROJECT_DIR, f"{FILE_NAME}_custom.config")
         if os.path.exists(qtc_custom_cfg):
-            fc = open(qtc_custom_cfg, 'r')
-            f.write(fc.read())
-            fc.close()
+            with open(qtc_custom_cfg, 'r') as fc:
+                f.write(fc.read())
             f.write("\n")
-        defines_final = [("#define %s %s" % (item[0], quote_define(item[1]))) for item in defines]
+        defines_final = [
+            f"#define {item[0]} {quote_define(item[1])}" for item in defines
+        ]
+
         if sys.platform != "win32":
             defines_final += cmake_compiler_defines()
         f.write("\n".join(defines_final))
@@ -129,22 +144,18 @@ def create_qtc_project_python():
     files_rel = [os.path.relpath(f, start=PROJECT_DIR) for f in files]
     files_rel.sort()
 
-    # --- qtcreator specific, simple format
-    if 0:
-        PROJECT_NAME = "Blender_Python"
-    else:
         # be tricky, get the project name from git if we can!
-        PROJECT_NAME = project_name_get() + "_Python"
+    PROJECT_NAME = f"{project_name_get()}_Python"
 
     FILE_NAME = PROJECT_NAME.lower()
-    f = open(os.path.join(PROJECT_DIR, "%s.files" % FILE_NAME), 'w')
+    f = open(os.path.join(PROJECT_DIR, f"{FILE_NAME}.files"), 'w')
     f.write("\n".join(files_rel))
 
-    qtc_prj = os.path.join(PROJECT_DIR, "%s.creator" % FILE_NAME)
+    qtc_prj = os.path.join(PROJECT_DIR, f"{FILE_NAME}.creator")
     f = open(qtc_prj, 'w')
     f.write("[General]\n")
 
-    qtc_cfg = os.path.join(PROJECT_DIR, "%s.config" % FILE_NAME)
+    qtc_cfg = os.path.join(PROJECT_DIR, f"{FILE_NAME}.config")
     if not os.path.exists(qtc_cfg):
         f = open(qtc_cfg, 'w')
         f.write("// ADD PREDEFINED MACROS HERE!\n")

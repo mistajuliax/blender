@@ -43,10 +43,7 @@ import bpy
 
 # Append the specified property name on the the existing path
 def path_add_property(path, prop):
-    if path:
-        return path + "." + prop
-    else:
-        return prop
+    return f"{path}.{prop}" if path else prop
 
 ###########################
 # Poll Callbacks
@@ -54,8 +51,7 @@ def path_add_property(path, prop):
 
 # selected objects (active object must be in object mode)
 def RKS_POLL_selected_objects(ksi, context):
-    ob = context.active_object
-    if ob:
+    if ob := context.active_object:
         return ob.mode == 'OBJECT'
     else:
         return bool(context.selected_objects)
@@ -65,9 +61,12 @@ def RKS_POLL_selected_objects(ksi, context):
 def RKS_POLL_selected_bones(ksi, context):
     # we must be in Pose Mode, and there must be some bones selected
     ob = context.active_object
-    if ob and ob.mode == 'POSE':
-        if context.active_pose_bone or context.selected_pose_bones:
-            return True
+    if (
+        ob
+        and ob.mode == 'POSE'
+        and (context.active_pose_bone or context.selected_pose_bones)
+    ):
+        return True
 
     # nothing selected
     return False
@@ -116,18 +115,11 @@ def RKS_GEN_available(ksi, context, ks, data):
     # if we haven't got an ID-block as 'data', try to restrict
     # paths added to only those which branch off from here
     # i.e. for bones
-    if id_block != data:
-        basePath = data.path_from_id()
-    else:
-        basePath = None  # this is not needed...
-
+    basePath = data.path_from_id() if id_block != data else None
     # for each F-Curve, include a path to key it
     # NOTE: we don't need to set the group settings here
     for fcu in adt.action.fcurves:
-        if basePath:
-            if basePath in fcu.data_path:
-                ks.paths.add(id_block, fcu.data_path, index=fcu.array_index)
-        else:
+        if basePath and basePath in fcu.data_path or not basePath:
             ks.paths.add(id_block, fcu.data_path, index=fcu.array_index)
 
 # ------

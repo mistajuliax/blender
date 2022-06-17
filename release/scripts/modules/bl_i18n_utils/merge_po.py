@@ -77,10 +77,10 @@ def main():
     for po in args.src:
         msgs = utils.I18nMessages(kind='PO', src=po)
         if msgs.parsing_errors:
-            print("\tSrc po {} is BROKEN, skipping.".format(po))
+            print(f"\tSrc po {po} is BROKEN, skipping.")
             ret = 1
             continue
-        print("\tMerging {}...".format(po))
+        print(f"\tMerging {po}...")
         if args.stats:
             print("\t\tMerged po stats:")
             msgs.print_stats(prefix="\t\t\t")
@@ -129,8 +129,10 @@ def main():
 
     dst_msgs.write(kind='PO', dest=args.dst)
 
-    print("Merged completed. {} messages were merged (among which {} were replaced), {} were added, "
-          "{} were \"un-fuzzied\".".format(nbr_merged, nbr_replaced, nbr_added, nbr_unfuzzied))
+    print(
+        f'Merged completed. {nbr_merged} messages were merged (among which {nbr_replaced} were replaced), {nbr_added} were added, {nbr_unfuzzied} were \"un-fuzzied\".'
+    )
+
     if args.stats:
         dst_msgs.update_info()
         print("Final merged po stats:")
@@ -139,5 +141,5 @@ def main():
 
 
 if __name__ == "__main__":
-    print("\n\n *** Running {} *** \n".format(__file__))
+    print(f"\n\n *** Running {__file__} *** \n")
     sys.exit(main())

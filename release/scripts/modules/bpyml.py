@@ -46,15 +46,13 @@ class ReturnStore(tuple):
         if type(key) is ReturnStore:
             key = (key, )
 
-        if type(key) is tuple:
-            children = self[CHILDREN]
-            if children:
-                raise Exception("Only a single __getitem__ is allowed on the ReturnStore")
-            else:
-                children[:] = key
-            return self
-        else:
+        if type(key) is not tuple:
             return tuple.__getitem__(self, key)
+        if children := self[CHILDREN]:
+            raise Exception("Only a single __getitem__ is allowed on the ReturnStore")
+        else:
+            children[:] = key
+        return self
 
 
 class FunctionStore(object):
@@ -111,10 +109,7 @@ def toxml(py_data, indent="    "):
 
 def fromxml(data):
     def _fromxml_kwargs(xml_node):
-        kwargs = {}
-        for key, value in xml_node.attributes.items():
-            kwargs[key] = value
-        return kwargs
+        return dict(xml_node.attributes.items())
 
     def _fromxml(xml_node):
         py_item = (xml_node.tagName, _fromxml_kwargs(xml_node), [])
@@ -137,17 +132,21 @@ def topretty_py(py_data, indent="    "):
     lines = []
 
     def _to_kwargs(kwargs):
-        return ", ".join([("%s=%s" % (key, repr(value))) for key, value in sorted(kwargs.items())])
+        return ", ".join(
+            [f"{key}={repr(value)}" for key, value in sorted(kwargs.items())]
+        )
 
     def _topretty(py_item, indent_ctx, last):
         if py_item[CHILDREN]:
-            lines.append("%s%s(%s) [" % (indent_ctx, py_item[TAG], _to_kwargs(py_item[ARGS])))
+            lines.append(f"{indent_ctx}{py_item[TAG]}({_to_kwargs(py_item[ARGS])}) [")
             py_item_last = py_item[CHILDREN][-1]
             for py_item_child in py_item[CHILDREN]:
                 _topretty(py_item_child, indent_ctx + indent, (py_item_child is py_item_last))
-            lines.append("%s]%s" % (indent_ctx, ("" if last else ",")))
+            lines.append(f'{indent_ctx}]{"" if last else ","}')
         else:
-            lines.append("%s%s(%s)%s" % (indent_ctx, py_item[TAG], _to_kwargs(py_item[ARGS]), ("" if last else ",")))
+            lines.append(
+                f'{indent_ctx}{py_item[TAG]}({_to_kwargs(py_item[ARGS])}){"" if last else ","}'
+            )
 
     _topretty(py_data[0], "", True)
 

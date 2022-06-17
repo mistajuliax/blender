@@ -33,7 +33,7 @@ _uilayout_tags = (
 
 # these need to be imported directly
 # >>> from bpyml_ui.locals import *
-locals = bpyml.tag_module("%s.locals" % __name__, _uilayout_tags)
+locals = bpyml.tag_module(f"{__name__}.locals", _uilayout_tags)
 
 
 def _parse_rna(prop, value):
@@ -42,27 +42,25 @@ def _parse_rna(prop, value):
     elif prop.type == 'INT':
         value = int(value)
     elif prop.type == 'BOOLEAN':
-        if value in {True, False}:
-            pass
-        else:
+        if value not in {True, False}:
             if value not in {"True", "False"}:
-                raise Exception("invalid bool value: %s" % value)
-            value = bool(value == "True")
+                raise Exception(f"invalid bool value: {value}")
+            value = value == "True"
     elif prop.type in {'STRING', 'ENUM'}:
         pass
     elif prop.type == 'POINTER':
-        value = eval("_bpy." + value)
+        value = eval(f"_bpy.{value}")
     else:
-        raise Exception("type not supported %s.%s" % (prop.identifier, prop.type))
+        raise Exception(f"type not supported {prop.identifier}.{prop.type}")
     return value
 
 
 def _parse_rna_args(base, py_node):
     rna_params = base.bl_rna.functions[py_node[TAG]].parameters
-    args = {}
-    for key, value in py_node[ARGS].items():
-        args[key] = _parse_rna(rna_params[key], value)
-    return args
+    return {
+        key: _parse_rna(rna_params[key], value)
+        for key, value in py_node[ARGS].items()
+    }
 
 
 def _call_recursive(context, base, py_node):
@@ -71,10 +69,9 @@ def _call_recursive(context, base, py_node):
         value = py_node[ARGS].get("expr")
         if value:
             value = eval(value, {"context": _bpy.context})
-            setattr(base, py_node[TAG], value)
         else:
             value = py_node[ARGS]["value"]  # have to have this
-            setattr(base, py_node[TAG], value)
+        setattr(base, py_node[TAG], value)
     else:
         args = _parse_rna_args(base, py_node)
         func_new = getattr(base, py_node[TAG])

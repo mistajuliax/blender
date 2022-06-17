@@ -183,4 +183,4 @@ if __name__ == "__main__":
     import os
     tmppath = "/tmp/test.dot"
     graph_armature(bpy.context.object, tmppath, CONSTRAINTS=True, DRIVERS=True)
-    os.system("dot -Tpng %s > %s; eog %s &" % (tmppath, tmppath + '.png', tmppath + '.png'))
+    os.system(f"dot -Tpng {tmppath} > {tmppath}.png; eog {tmppath}.png &")

@@ -51,11 +51,7 @@ class NodeItem():
 
     @property
     def label(self):
-        if self._label:
-            return self._label
-        else:
-            # if no custom label is defined, fall back to the node type UI name
-            return getattr(bpy.types, self.nodetype).bl_rna.name
+        return self._label or getattr(bpy.types, self.nodetype).bl_rna.name
 
     # NB: is a staticmethod because called with an explicit self argument
     # NodeItemCustom sets this as a variable attribute in __init__
@@ -125,7 +121,7 @@ def register_node_categories(identifier, cat_list):
 
         for cat in cat_list:
             if cat.poll(context):
-                layout.menu("NODE_MT_category_%s" % cat.identifier)
+                layout.menu(f"NODE_MT_category_{cat.identifier}")
 
     bpy.types.NODE_MT_add.append(draw_add_menu)
 
@@ -142,8 +138,7 @@ def node_categories_iter(context):
 
 def node_items_iter(context):
     for cat in node_categories_iter(context):
-        for item in cat.items(context):
-            yield item
+        yield from cat.items(context)
 
 
 def unregister_node_cat_types(cats):
@@ -157,8 +152,7 @@ def unregister_node_cat_types(cats):
 def unregister_node_categories(identifier=None):
     # unregister existing UI classes
     if identifier:
-        cat_types = _node_categories.get(identifier, None)
-        if cat_types:
+        if cat_types := _node_categories.get(identifier, None):
             unregister_node_cat_types(cat_types)
         del _node_categories[identifier]
 

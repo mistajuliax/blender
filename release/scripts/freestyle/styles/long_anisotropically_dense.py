@@ -61,9 +61,8 @@ class pyDensityUP1D(UnaryPredicate1D):
         m = self._func2(inter)
         if c < self._threshold:
             return 1
-        if m > 4*c:
-            if c < 1.5*self._threshold:
-                return 1
+        if m > 4 * c and c < 1.5 * self._threshold:
+            return 1
         return 0
 
 Operators.select(QuantitativeInvisibilityUP1D(0))

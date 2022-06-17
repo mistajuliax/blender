@@ -30,13 +30,11 @@ _FAKE_STRUCT_SUBCLASS = True
 
 def _get_direct_attr(rna_type, attr):
     props = getattr(rna_type, attr)
-    base = rna_type.base
-
-    if not base:
-        return [prop for prop in props]
-    else:
+    if base := rna_type.base:
         props_base = getattr(base, attr).values()
         return [prop for prop in props if prop not in props_base]
+    else:
+        return list(props)
 
 
 def get_direct_properties(rna_type):
@@ -145,18 +143,20 @@ class InfoStructRNA:
     def _get_py_visible_attrs(self):
         attrs = []
         py_class = getattr(bpy.types, self.identifier)
-        for attr_str in dir(py_class):
-            if attr_str.startswith("_"):
-                continue
-            attrs.append((attr_str, getattr(py_class, attr_str)))
+        attrs.extend(
+            (attr_str, getattr(py_class, attr_str))
+            for attr_str in dir(py_class)
+            if not attr_str.startswith("_")
+        )
+
         return attrs
 
     def get_py_properties(self):
-        properties = []
-        for identifier, attr in self._get_py_visible_attrs():
-            if type(attr) is property:
-                properties.append((identifier, attr))
-        return properties
+        return [
+            (identifier, attr)
+            for identifier, attr in self._get_py_visible_attrs()
+            if type(attr) is property
+        ]
 
     def get_py_functions(self):
         import types
@@ -183,8 +183,8 @@ class InfoStructRNA:
         txt = ""
         txt += self.identifier
         if self.base:
-            txt += "(%s)" % self.base.identifier
-        txt += ": " + self.description + "\n"
+            txt += f"({self.base.identifier})"
+        txt += f": {self.description}" + "\n"
 
         for prop in self.properties:
             txt += prop.__repr__() + "\n"
@@ -240,8 +240,7 @@ class InfoPropertyRNA:
         self.is_argument_optional = rna_prop.is_argument_optional
 
         self.type = rna_prop.type.lower()
-        fixed_type = getattr(rna_prop, "fixed_type", "")
-        if fixed_type:
+        if fixed_type := getattr(rna_prop, "fixed_type", ""):
             self.fixed_type = GetInfoStructRNA(fixed_type)  # valid for pointer/collections
         else:
             self.fixed_type = None
@@ -267,30 +266,28 @@ class InfoPropertyRNA:
         elif self.type == "string":
             self.default_str = "\"%s\"" % self.default
         elif self.type == "enum":
-            if self.is_enum_flag:
-                self.default_str = "%r" % self.default  # repr or set()
-            else:
-                self.default_str = "'%s'" % self.default
+            self.default_str = (
+                "%r" % self.default if self.is_enum_flag else "'%s'" % self.default
+            )
+
         elif self.array_length:
             self.default_str = ''
             # special case for floats
-            if len(self.default) > 0:
-                if self.type == "float":
-                    self.default_str = "(%s)" % ", ".join(float_as_string(f) for f in self.default)
+            if len(self.default) > 0 and self.type == "float":
+                self.default_str = f'({", ".join((float_as_string(f) for f in self.default))})'
             if not self.default_str:
                 self.default_str = str(self.default)
+        elif self.type == "float":
+            self.default_str = float_as_string(self.default)
         else:
-            if self.type == "float":
-                self.default_str = float_as_string(self.default)
-            else:
-                self.default_str = str(self.default)
+            self.default_str = str(self.default)
 
         self.srna = GetInfoStructRNA(rna_prop.srna)  # valid for pointer/collections
 
     def get_arg_default(self, force=True):
         default = self.default_str
         if default and (force or self.is_required is False):
-            return "%s=%s" % (self.identifier, default)
+            return f"{self.identifier}={default}"
         return self.identifier
 
     def get_type_description(self, as_ret=False, as_arg=False, class_fmt="%s", collection_id="Collection"):
@@ -301,25 +298,31 @@ class InfoPropertyRNA:
                 type_str += " array of %d items" % (self.array_length)
 
             if self.type in {"float", "int"}:
-                type_str += " in [%s, %s]" % (range_str(self.min), range_str(self.max))
+                type_str += f" in [{range_str(self.min)}, {range_str(self.max)}]"
             elif self.type == "enum":
                 if self.is_enum_flag:
                     type_str += " set in {%s}" % ", ".join(("'%s'" % s[0]) for s in self.enum_items)
                 else:
                     type_str += " in [%s]" % ", ".join(("'%s'" % s[0]) for s in self.enum_items)
 
-            if not (as_arg or as_ret):
-                # write default property, ignore function args for this
-                if self.type != "pointer":
-                    if self.default_str:
-                        type_str += ", default %s" % self.default_str
+            if (
+                not as_arg
+                and not as_ret
+                and self.type != "pointer"
+                and self.default_str
+            ):
+                type_str += f", default {self.default_str}"
 
         else:
             if self.type == "collection":
                 if self.collection_type:
-                    collection_str = (class_fmt % self.collection_type.identifier) + (" %s of " % collection_id)
+                    collection_str = (
+                        class_fmt % self.collection_type.identifier
+                        + f" {collection_id} of "
+                    )
+
                 else:
-                    collection_str = "%s of " % collection_id
+                    collection_str = f"{collection_id} of "
             else:
                 collection_str = ""
 
@@ -334,21 +337,20 @@ class InfoPropertyRNA:
                 type_info.append("optional")
             if self.is_argument_optional:
                 type_info.append("optional argument")
-        else:  # readonly is only useful for self's, not args
-            if self.is_readonly:
-                type_info.append("readonly")
+        elif self.is_readonly:
+            type_info.append("readonly")
 
         if self.is_never_none:
             type_info.append("never None")
 
         if type_info:
-            type_str += (", (%s)" % ", ".join(type_info))
+            type_str += f', ({", ".join(type_info)})'
 
         return type_str
 
     def __str__(self):
         txt = ""
-        txt += " * " + self.identifier + ": " + self.description
+        txt += f" * {self.identifier}: {self.description}"
 
         return txt
 
@@ -379,7 +381,7 @@ class InfoFunctionRNA:
         parent_id = rna_func
         self.return_values = []
 
-        for rna_prop in rna_func.parameters.values():
+        for rna_prop in parent_id.parameters.values():
             prop = GetInfoPropertyRNA(rna_prop, parent_id)
             if rna_prop.is_output:
                 self.return_values.append(prop)
@@ -390,11 +392,11 @@ class InfoFunctionRNA:
 
     def __str__(self):
         txt = ''
-        txt += ' * ' + self.identifier + '('
+        txt += f' * {self.identifier}('
 
         for arg in self.args:
-            txt += arg.identifier + ', '
-        txt += '): ' + self.description
+            txt += f'{arg.identifier}, '
+        txt += f'): {self.description}'
         return txt
 
 
@@ -441,20 +443,19 @@ class InfoOperatorRNA:
         if op_func is None:
             op_func = getattr(op_class, "poll", None)
 
-        if op_func:
-            op_code = op_func.__code__
-            source_path = op_code.co_filename
-
-            # clear the prefix
-            for p in script_paths:
-                source_path = source_path.split(p)[-1]
-
-            if source_path[0] in "/\\":
-                source_path = source_path[1:]
-
-            return source_path, op_code.co_firstlineno
-        else:
+        if not op_func:
             return None, None
+        op_code = op_func.__code__
+        source_path = op_code.co_filename
+
+        # clear the prefix
+        for p in script_paths:
+            source_path = source_path.split(p)[-1]
+
+        if source_path[0] in "/\\":
+            source_path = source_path[1:]
+
+        return source_path, op_code.co_firstlineno
 
 
 def _GetInfoRNA(bl_rna, cls, parent_id=""):
@@ -499,9 +500,8 @@ def BuildRNAInfo():
         """
         Needed when referencing one struct from another
         """
-        nested = rna_struct.nested
-        if nested:
-            return "%s.%s" % (full_rna_struct_path(nested), rna_struct.identifier)
+        if nested := rna_struct.nested:
+            return f"{full_rna_struct_path(nested)}.{rna_struct.identifier}"
         else:
             return rna_struct.identifier
 
@@ -697,7 +697,7 @@ if __name__ == "__main__":
         struct_id_str = v.identifier  #~ "".join(sid for sid in struct_id if struct_id)
 
         for base in v.get_bases():
-            struct_id_str = base.identifier + "|" + struct_id_str
+            struct_id_str = f"{base.identifier}|{struct_id_str}"
 
         props = [(prop.identifier, prop) for prop in v.properties]
         for prop_id, prop in sorted(props):
@@ -707,7 +707,10 @@ if __name__ == "__main__":
             if prop.array_length > 0:
                 prop_type += "[%d]" % prop.array_length
 
-            data.append("%s.%s -> %s:    %s%s    %s" % (struct_id_str, prop.identifier, prop.identifier, prop_type, ", (read-only)" if prop.is_readonly else "", prop.description))
+            data.append(
+                f'{struct_id_str}.{prop.identifier} -> {prop.identifier}:    {prop_type}{", (read-only)" if prop.is_readonly else ""}    {prop.description}'
+            )
+
         data.sort()
 
     if bpy.app.background:

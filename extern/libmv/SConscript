@@ -23,10 +23,14 @@ if env['WITH_BF_LIBMV']:
     if env['SHARED_PTR_NAMESPACE'] == 'std::tr1':
         defs.append('CERES_TR1_SHARED_PTR')
 
-    defs.append('GOOGLE_GLOG_DLL_DECL=')
-    defs.append('WITH_LIBMV')
-    defs.append('WITH_LIBMV_GUARDED_ALLOC')
-    defs.append('LIBMV_NO_FAST_DETECTOR')
+    defs.extend(
+        (
+            'GOOGLE_GLOG_DLL_DECL=',
+            'WITH_LIBMV',
+            'WITH_LIBMV_GUARDED_ALLOC',
+            'LIBMV_NO_FAST_DETECTOR',
+        )
+    )
 
     src = env.Glob('*.cc')
     src += env.Glob('libmv/base/*.cc')

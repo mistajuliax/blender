@@ -333,8 +333,7 @@ class pyFillOcclusionsRelativeChainingIterator(ChainingIterator):
         if type(vertex) is TVertex:
             mate = vertex.get_mate(self.current_edge)
             winner = find_matching_vertex(mate.id, it)
-            winnerOrientation = not it.is_incoming if not it.is_end else False
-        ## case of NonTVertex
+            winnerOrientation = False if it.is_end else not it.is_incoming
         else:
             for nat in NATURES:
                 if (self.current_edge.nature & nat):
@@ -396,8 +395,7 @@ class pyFillOcclusionsAbsoluteChainingIterator(ChainingIterator):
         if type(vertex) is TVertex:
             mate = vertex.get_mate(self.current_edge)
             winner = find_matching_vertex(mate.id, it)
-            winnerOrientation = not it.is_incoming if not it.is_end else False
-        ## case of NonTVertex
+            winnerOrientation = False if it.is_end else not it.is_incoming
         else:
             for nat in NATURES:
                 if (self.current_edge.nature & nat):
@@ -457,8 +455,7 @@ class pyFillOcclusionsAbsoluteAndRelativeChainingIterator(ChainingIterator):
         if type(vertex) is TVertex:
             mate = vertex.get_mate(self.current_edge)
             winner = find_matching_vertex(mate.id, it)
-            winnerOrientation = not it.is_incoming if not it.is_end else False
-        ## case of NonTVertex
+            winnerOrientation = False if it.is_end else not it.is_incoming
         else:
             for nat in NATURES:
                 if (self.current_edge.nature & nat):
@@ -519,8 +516,7 @@ class pyFillQi0AbsoluteAndRelativeChainingIterator(ChainingIterator):
         if type(vertex) is TVertex:
             mate = vertex.get_mate(self.current_edge)
             winner = find_matching_vertex(mate.id, it)
-            winnerOrientation = not it.is_incoming if not it.is_end else False
-        ## case of NonTVertex
+            winnerOrientation = False if it.is_end else not it.is_incoming
         else:
             for nat in NATURES:
                 if (self.current_edge.nature & nat):
@@ -598,8 +594,6 @@ class pyNoIdChainSilhouetteIterator(ChainingIterator):
                 vB = ve.first_fedge.first_svertex
                 if vA.id.first == vB.id.first:
                     return ve
-            return None
-        ## case of NonTVertex
         else:
             for i, nat in enumerate(NATURES):
                  if (nat & self.current_edge.nature):
@@ -614,4 +608,5 @@ class pyNoIdChainSilhouetteIterator(ChainingIterator):
 
                             winner = ve
                     return winner
-            return None
+
+        return None

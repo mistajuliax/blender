@@ -194,7 +194,7 @@ class ObjectNamesUP1D(UnaryPredicate1D):
 
     def __call__(self, viewEdge):
         found = viewEdge.viewshape.name in self._names
-        return found if not self._negative else not found
+        return not found if self._negative else found
 
 
 class QuantitativeInvisibilityRangeUP1D(UnaryPredicate1D):
@@ -249,7 +249,7 @@ class pyHigherNumberOfTurnsUP1D(UnaryPredicate1D):
     def __call__(self, inter):
         it = Interface0DIterator(inter)
         # sum the turns, check against n
-        return sum(1 for _ in it if self.func(it) > self._a) > self._n
+        return sum(self.func(it) > self._a for _ in it) > self._n
         # interesting fact, the line above is 70% faster than:
         # return sum(self.func(it) > self._a for _ in it) > self._n
 
@@ -350,7 +350,10 @@ class pyIsOccludedByUP1D(UnaryPredicate1D):
     def __init__(self, id):
         UnaryPredicate1D.__init__(self)
         if not isinstance(id, Id):
-            raise TypeError("pyIsOccludedByUP1D expected freestyle.types.Id, not " + type(id).__name__)
+            raise TypeError(
+                f"pyIsOccludedByUP1D expected freestyle.types.Id, not {type(id).__name__}"
+            )
+
         self._id = id
 
     def __call__(self, inter):

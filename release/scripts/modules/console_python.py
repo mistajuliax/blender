@@ -77,13 +77,13 @@ def get_console(console_id):
 
     console_data = consoles.get(console_id)
 
+    # XXX, bug in python 3.1.2, 3.2 ? (worked in 3.1.1)
+    # seems there is no way to clear StringIO objects for writing, have to
+    # make new ones each time.
+    import io
     if console_data:
         console, stdout, stderr = console_data
 
-        # XXX, bug in python 3.1.2, 3.2 ? (worked in 3.1.1)
-        # seems there is no way to clear StringIO objects for writing, have to
-        # make new ones each time.
-        import io
         stdout = io.StringIO()
         stderr = io.StringIO()
     else:
@@ -112,7 +112,6 @@ def get_console(console_id):
         if _BPY_MAIN_OWN:
             console._bpy_main_mod = bpy_main_mod
 
-        import io
         stdout = io.StringIO()
         stderr = io.StringIO()
 
@@ -321,9 +320,9 @@ def copy_as_script(context):
             elif text.startswith(PROMPT_MULTI):
                 text = text[len(PROMPT_MULTI):]
         elif type == 'OUTPUT':
-            text = "#~ " + text
+            text = f"#~ {text}"
         elif type == 'ERROR':
-            text = "#! " + text
+            text = f"#! {text}"
 
         lines.append(text)
 
@@ -336,7 +335,7 @@ def banner(context):
     sc = context.space_data
     version_string = sys.version.strip().replace('\n', ' ')
 
-    add_scrollback("PYTHON INTERACTIVE CONSOLE %s" % version_string, 'OUTPUT')
+    add_scrollback(f"PYTHON INTERACTIVE CONSOLE {version_string}", 'OUTPUT')
     add_scrollback("", 'OUTPUT')
     add_scrollback("Command History:     Up/Down Arrow", 'OUTPUT')
     add_scrollback("Cursor:              Left/Right Home/End", 'OUTPUT')

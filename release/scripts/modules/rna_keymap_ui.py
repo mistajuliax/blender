@@ -203,8 +203,7 @@ def draw_kmi(display_keymaps, kc, km, kmi, layout, level):
 
         # Modal key maps attached to this operator
         if not km.is_modal:
-            kmm = kc.keymaps.find_modal(kmi.idname)
-            if kmm:
+            if kmm := kc.keymaps.find_modal(kmi.idname):
                 draw_km(display_keymaps, kc, kmm, None, layout, level + 1)
                 layout.context_pointer_set("keymap", km)
 
@@ -317,7 +316,7 @@ def draw_filtered(display_keymaps, filter_type, filter_text, layout):
                     # exception for 'type'
                     # also inspect 'key_modifier' as a fallback
                     val = kmi.key_modifier
-                    if not (val == 'NONE' or val not in ki):
+                    if val != 'NONE' and val in ki:
                         continue
                     return False
 
@@ -391,8 +390,7 @@ def draw_keymaps(context, layout):
     col.separator()
     display_keymaps = keyconfig_utils.keyconfig_merge(kc, kc)
     filter_type = spref.filter_type
-    filter_text = spref.filter_text.strip()
-    if filter_text:
+    if filter_text := spref.filter_text.strip():
         filter_text = filter_text.lower()
         ok = draw_filtered(display_keymaps, filter_type, filter_text, col)
     else:

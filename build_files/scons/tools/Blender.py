@@ -69,7 +69,7 @@ def init_lib_dict():
 
 # helper func for add_lib_to_dict
 def internal_lib_to_dict(dict = None, libtype = None, libname = None, priority = 100):
-    if not libname in dict[libtype]:
+    if libname not in dict[libtype]:
         done = None
         while not done:
             if dict[libtype].has_key(priority):
@@ -165,9 +165,8 @@ def setup_staticlibs(lenv):
     '''
     if lenv['WITH_BF_FFMPEG'] and lenv['WITH_BF_STATICFFMPEG']:
         statlibs += Split(lenv['BF_FFMPEG_LIB_STATIC'])
-    if lenv['WITH_BF_INTERNATIONAL']:
-        if lenv['WITH_BF_FREETYPE_STATIC']:
-            statlibs += Split(lenv['BF_FREETYPE_LIB_STATIC'])
+    if lenv['WITH_BF_INTERNATIONAL'] and lenv['WITH_BF_FREETYPE_STATIC']:
+        statlibs += Split(lenv['BF_FREETYPE_LIB_STATIC'])
     if lenv['WITH_BF_OPENAL']:
         libincs += Split(lenv['BF_OPENAL_LIBPATH'])
         if lenv['WITH_BF_STATICOPENAL']:
@@ -199,7 +198,7 @@ def setup_staticlibs(lenv):
             libincs += Split(lenv['BF_OPENMP_LIBPATH'])
         if lenv['WITH_BF_STATICOPENMP']:
             statlibs += Split(lenv['BF_OPENMP_LIB_STATIC'])
-            
+
     if lenv['WITH_BF_OIIO']:
         libincs += Split(lenv['BF_OIIO_LIBPATH'])
         if lenv['WITH_BF_STATICOIIO']:
@@ -236,11 +235,10 @@ def setup_staticlibs(lenv):
         if lenv['WITH_BF_STATICJEMALLOC']:
             statlibs += Split(lenv['BF_JEMALLOC_LIB_STATIC'])
 
-    if lenv['OURPLATFORM']=='linux':
-        if lenv['WITH_BF_3DMOUSE']:
-            libincs += Split(lenv['BF_3DMOUSE_LIBPATH'])
-            if lenv['WITH_BF_STATIC3DMOUSE']:
-                statlibs += Split(lenv['BF_3DMOUSE_LIB_STATIC'])
+    if lenv['OURPLATFORM'] == 'linux' and lenv['WITH_BF_3DMOUSE']:
+        libincs += Split(lenv['BF_3DMOUSE_LIBPATH'])
+        if lenv['WITH_BF_STATIC3DMOUSE']:
+            statlibs += Split(lenv['BF_3DMOUSE_LIB_STATIC'])
 
     # setting this last so any overriding of manually libs could be handled
     if lenv['OURPLATFORM'] not in ('win32-vc', 'win32-mingw', 'win64-vc', 'linuxcross', 'win64-mingw'):
@@ -265,23 +263,17 @@ def setup_syslibs(lenv):
             syslibs.append(lenv['BF_PYTHON_LIB']+'_d')
         else:
             syslibs.append(lenv['BF_PYTHON_LIB'])
-    if lenv['WITH_BF_OPENAL']:
-        if not lenv['WITH_BF_STATICOPENAL']:
-            syslibs += Split(lenv['BF_OPENAL_LIB'])
+    if lenv['WITH_BF_OPENAL'] and not lenv['WITH_BF_STATICOPENAL']:
+        syslibs += Split(lenv['BF_OPENAL_LIB'])
     if lenv['WITH_BF_OPENMP'] and lenv['CC'] != 'icc' and lenv['C_COMPILER_ID'] != 'clang' and not lenv['WITH_BF_STATICOPENMP']:
-        if lenv['CC'] == 'cl.exe':
-            syslibs += ['vcomp']
-        else:
-            syslibs += ['gomp']
+        syslibs += ['vcomp'] if lenv['CC'] == 'cl.exe' else ['gomp']
     if lenv['WITH_BF_ICONV']:
         syslibs += Split(lenv['BF_ICONV_LIB'])
-    if lenv['WITH_BF_OIIO']:
-        if not lenv['WITH_BF_STATICOIIO']:
-            syslibs += Split(lenv['BF_OIIO_LIB'])
+    if lenv['WITH_BF_OIIO'] and not lenv['WITH_BF_STATICOIIO']:
+        syslibs += Split(lenv['BF_OIIO_LIB'])
 
-    if lenv['WITH_BF_OCIO']:
-        if not lenv['WITH_BF_STATICOCIO']:
-            syslibs += Split(lenv['BF_OCIO_LIB'])
+    if lenv['WITH_BF_OCIO'] and not lenv['WITH_BF_STATICOCIO']:
+        syslibs += Split(lenv['BF_OCIO_LIB'])
 
     if lenv['WITH_BF_OPENEXR'] and not lenv['WITH_BF_STATICOPENEXR']:
         syslibs += Split(lenv['BF_OPENEXR_LIB'])
@@ -312,23 +304,28 @@ def setup_syslibs(lenv):
     if lenv['WITH_BF_COLLADA'] and not lenv['WITH_BF_STATICOPENCOLLADA']:
         syslibs.append(lenv['BF_PCRE_LIB'])
         if lenv['BF_DEBUG'] and (lenv['OURPLATFORM'] != 'linux'):
-            syslibs += [colladalib+'_d' for colladalib in Split(lenv['BF_OPENCOLLADA_LIB'])]
+            syslibs += [
+                f'{colladalib}_d'
+                for colladalib in Split(lenv['BF_OPENCOLLADA_LIB'])
+            ]
+
         else:
             syslibs += Split(lenv['BF_OPENCOLLADA_LIB'])
         syslibs.append(lenv['BF_EXPAT_LIB'])
 
-    if lenv['WITH_BF_JEMALLOC']:
-        if not lenv['WITH_BF_STATICJEMALLOC']:
-            syslibs += Split(lenv['BF_JEMALLOC_LIB'])
+    if lenv['WITH_BF_JEMALLOC'] and not lenv['WITH_BF_STATICJEMALLOC']:
+        syslibs += Split(lenv['BF_JEMALLOC_LIB'])
 
-    if lenv['OURPLATFORM']=='linux':
-        if lenv['WITH_BF_3DMOUSE']:
-            if not lenv['WITH_BF_STATIC3DMOUSE']:
-                syslibs += Split(lenv['BF_3DMOUSE_LIB'])
-                
+    if (
+        lenv['OURPLATFORM'] == 'linux'
+        and lenv['WITH_BF_3DMOUSE']
+        and not lenv['WITH_BF_STATIC3DMOUSE']
+    ):
+        syslibs += Split(lenv['BF_3DMOUSE_LIB'])
+
     if lenv['WITH_BF_BOOST'] and not lenv['WITH_BF_STATICBOOST']:
         syslibs += Split(lenv['BF_BOOST_LIB'])
-        
+
         if lenv['WITH_BF_INTERNATIONAL']:
             syslibs += Split(lenv['BF_BOOST_LIB_INTERNATIONAL'])
 
@@ -401,14 +398,15 @@ def creator(env):
         defs.append('WITH_FREESTYLE')
 
     if env['OURPLATFORM'] in ('win32-vc', 'win32-mingw', 'linuxcross', 'win64-vc', 'win64-mingw'):
-        incs.append(env['BF_PTHREADS_INC'])
-        incs.append('#/intern/utfconv')
-
+        incs.extend((env['BF_PTHREADS_INC'], '#/intern/utfconv'))
     env.Append(CPPDEFINES=defs)
     env.Append(CPPPATH=incs)
-    obj = [env.Object(root_build_dir+'source/creator/creator/creator', ['#source/creator/creator.c'])]
-
-    return obj
+    return [
+        env.Object(
+            f'{root_build_dir}source/creator/creator/creator',
+            ['#source/creator/creator.c'],
+        )
+    ]
 
 ## TODO: see if this can be made in an emitter
 def buildinfo(lenv, build_type):

@@ -72,7 +72,7 @@ def phase_to_direction(length):
     - the phase
     - a Vector with the values of the cosine and sine of 2pi * phase  (the direction)
     """
-    results = list()
+    results = []
     for i in range(length):
         phase = i / (length - 1)
         results.append((phase, Vector((cos(2 * pi * phase), sin(2 * pi * phase)))))
@@ -192,28 +192,25 @@ def iter_material_value(stroke, func, attribute):
         material = func(it)
         # main
         if attribute == 'LINE':
-            value = rgb_to_bw(*material.line[0:3])
+            value = rgb_to_bw(*material.line[:3])
         elif attribute == 'ALPHA':
             value = material.line[3]
         elif attribute == 'DIFF':
-            value = rgb_to_bw(*material.diffuse[0:3])
+            value = rgb_to_bw(*material.diffuse[:3])
         elif attribute == 'SPEC':
-            value = rgb_to_bw(*material.specular[0:3])
-        # line seperate
+            value = rgb_to_bw(*material.specular[:3])
         elif attribute == 'LINE_R':
             value = material.line[0]
         elif attribute == 'LINE_G':
             value = material.line[1]
         elif attribute == 'LINE_B':
             value = material.line[2]
-        # diffuse seperate
         elif attribute == 'DIFF_R':
             value = material.diffuse[0]
         elif attribute == 'DIFF_G':
             value = material.diffuse[1]
         elif attribute == 'DIFF_B':
             value = material.diffuse[2]
-        # specular seperate
         elif attribute == 'SPEC_R':
             value = material.specular[0]
         elif attribute == 'SPEC_G':
@@ -223,7 +220,7 @@ def iter_material_value(stroke, func, attribute):
         elif attribute == 'SPEC_HARDNESS':
             value = material.shininess
         else:
-            raise ValueError("unexpected material attribute: " + attribute)
+            raise ValueError(f"unexpected material attribute: {attribute}")
         yield (svert, value)
 
 def iter_distance_along_stroke(stroke):

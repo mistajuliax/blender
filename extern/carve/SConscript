@@ -13,10 +13,13 @@ defs = []
 incs = ['include']
 
 if env['WITH_BF_BOOST']:
-    if env['OURPLATFORM'] not in ('win32-vc', 'win64-vc'):
-        # Boost is setting as preferred collections library in the Carve code when using MSVC compiler
-        if env['OURPLATFORM'] not in ('win32-mingw', 'win64-mingw'):
-            defs.append('HAVE_BOOST_UNORDERED_COLLECTIONS')
+    if env['OURPLATFORM'] not in (
+        'win32-vc',
+        'win64-vc',
+        'win32-mingw',
+        'win64-mingw',
+    ):
+        defs.append('HAVE_BOOST_UNORDERED_COLLECTIONS')
 
     defs.append('CARVE_SYSTEM_BOOST')
     incs.append(env['BF_BOOST_INC'])
